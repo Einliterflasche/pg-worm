@@ -1,9 +1,9 @@
 # *P*ost*g*reSQL's *W*orst *ORM*
 
-The goal is for `pg-worm` to be an easy-to-use ORM (unlike, say, diesel-rs).
+The goal is for `pg-worm` to become an easy-to-use ORM (unlike, say, diesel-rs).
 
 Currently this means providing a derivable `Model` 
-trait for easy parsing structs from `tokio_postgres::Model`.
+trait for easily parsing structs from `tokio_postgres::Model`.
 
 ## Usage
 
