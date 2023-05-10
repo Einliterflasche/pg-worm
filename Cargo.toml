@@ -2,16 +2,17 @@
 name = "pg-worm"
 version = "0.1.0"
 edition = "2021"
+authors = ["Einliterflasche <einliterflasche@pm.me>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0"
 
-serde = { version = "1.0.104", features = ["derive"] }
+tokio-postgres = "0.7"
 
-tokio = { version = "0.2", features = ["full"] }
-tokio-postgres = "0.5"
-
-phf = { version = "0.11.1", features = ["macros"] }
+# phf = { version = "0.11.1", features = ["macros"] }
 pg-worm-derive = { version = "0.1.0", path = "pg-worm-derive" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
