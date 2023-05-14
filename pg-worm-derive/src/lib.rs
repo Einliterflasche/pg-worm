@@ -3,6 +3,8 @@ use proc_macro::{self, TokenStream};
 use quote::quote;
 use syn::parse_macro_input;
 
+
+
 #[derive(Clone, FromField)]
 #[darling(attributes(column))]
 struct ModelField {
@@ -10,8 +12,6 @@ struct ModelField {
     ty: syn::Type,
     #[darling(default)]
     unique: bool,
-    #[darling(default)]
-    nullable: bool,
     dtype: String
 }
 
@@ -34,7 +34,6 @@ struct ModelInput {
 ///  * `column` - for struct fields:
 ///      - `dtype`: String, required,
 ///      - `unique`: bool, optional, default: `false`
-///      - `nullable`: bool, optional, default: `false`
 #[proc_macro_derive(Model, attributes(table, column))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let opts = ModelInput::from_derive_input(&parse_macro_input!(input)).unwrap();

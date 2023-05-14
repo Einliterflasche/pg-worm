@@ -5,7 +5,7 @@ use pg_worm::tokio_postgres::NoTls;
 struct Book {
     #[column(dtype = "BIGSERIAL")]
     id: i64,
-    #[column(dtype = "TEXT", nullable, unique)]
+    #[column(dtype = "TEXT", unique)]
     title: String
 }
 
