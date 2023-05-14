@@ -7,6 +7,7 @@ use syn::parse_macro_input;
 #[darling(attributes(column))]
 struct ModelField {
     ident: Option<syn::Ident>,
+    ty: syn::Type,
     #[darling(default)]
     unique: bool,
     #[darling(default)]
@@ -25,6 +26,15 @@ struct ModelInput {
     table_name: Option<String>
 }
 
+/// Automatically implement `Model` for your struct.
+/// 
+/// ## Attributes
+///  * `table` - for structs:
+///      - `table_name`: String, optional
+///  * `column` - for struct fields:
+///      - `dtype`: String, required,
+///      - `unique`: bool, optional, default: `false`
+///      - `nullable`: bool, optional, default: `false`
 #[proc_macro_derive(Model, attributes(table, column))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let opts = ModelInput::from_derive_input(&parse_macro_input!(input)).unwrap();
