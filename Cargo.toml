@@ -7,12 +7,12 @@ authors = ["Einliterflasche <einliterflasche@pm.me>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+thiserror = "1.0"
 anyhow = "1.0"
-
 tokio-postgres = "0.7"
+once_cell = "1.17"
 
-# phf = { version = "0.11.1", features = ["macros"] }
-pg-worm-derive = { version = "0.1.0", path = "pg-worm-derive" }
+pg-worm-derive = { version = "0.1", path = "pg-worm-derive" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
