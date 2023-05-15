@@ -1,12 +1,12 @@
-use pg_worm::{connect, Model};
 use pg_worm::tokio_postgres::NoTls;
+use pg_worm::{connect, Model};
 
 #[derive(Model)]
 struct Book {
     #[column(dtype = "BIGSERIAL", primary_key, unique)]
     id: i64,
     #[column(dtype = "TEXT", unique)]
-    title: String
+    title: String,
 }
 
 #[tokio::test]
