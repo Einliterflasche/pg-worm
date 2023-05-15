@@ -3,7 +3,7 @@ use pg_worm::tokio_postgres::NoTls;
 
 #[derive(Model)]
 struct Book {
-    #[column(dtype = "BIGSERIAL")]
+    #[column(dtype = "BIGSERIAL", primary_key, unique)]
     id: i64,
     #[column(dtype = "TEXT", unique)]
     title: String
@@ -15,4 +15,6 @@ async fn connect_to_database() {
         .await
         .expect("couln't connect to database");
     tokio::spawn(async move { conn.await.unwrap() });
+
+    pg_worm::register!(Book).await.unwrap();
 }

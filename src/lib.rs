@@ -61,6 +61,8 @@ pub enum PgWormError {
     ConnectionError,
     #[error("already connected to database")]
     AlreadyConnected,
+    #[error("not connected to database")]
+    NotConnected,
     #[error("pg error")]
     PostgresError(#[from] tokio_postgres::Error)
 }
@@ -96,6 +98,24 @@ where
     Ok(conn)
 }
 
+/// Register your model with the database.
+/// This creates a table representing your model.
+pub async fn register_model<M: Model<M>>() -> Result<(), PgWormError> {
+    if let Some(client) = get_client() {
+        client.execute(&M::create_sql(), &[]).await?;
+        return Ok(());
+    }
+
+    Err(PgWormError::NotConnected)
+}
+
+#[macro_export]
+macro_rules! register {
+    ($x:ty) => {
+        $crate::register_model::<$x>()
+    };
+}
+
 /// This is the trait which you should derive for your model structs.
 /// 
 /// It will provide the ORM functionality.
@@ -103,4 +123,28 @@ pub trait Model<T> {
     /// Parse a `tokio_postgres::Row` to your model.
     #[must_use]
     fn from_row(row: &Row) -> Result<T, tokio_postgres::Error>;
+
+    #[must_use]
+    fn create_sql() -> String;
+}
+
+#[cfg(test)]
+mod tests {
+    use pg_worm::Model;
+
+    #[derive(Model)]
+    struct Person {
+        #[column(dtype = "BIGSERIAL", primary_key, unique)]
+        id: i64,
+        #[column(dtype = "TEXT")]
+        name: String
+    }
+
+    #[test]
+    fn sql_create_table() {
+        assert_eq!(
+            Person::create_sql(), 
+            "CREATE TABLE IF NOT EXISTS person (id BIGSERIAL PRIMARY KEY UNIQUE, name TEXT)"
+        );
+    }
 }

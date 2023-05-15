@@ -1,30 +1,11 @@
-use darling::{FromDeriveInput, ast::Data, FromField};
+mod parse;
+
+use darling::FromDeriveInput;
 use proc_macro::{self, TokenStream};
 use quote::quote;
 use syn::parse_macro_input;
 
-
-
-#[derive(Clone, FromField)]
-#[darling(attributes(column))]
-struct ModelField {
-    ident: Option<syn::Ident>,
-    ty: syn::Type,
-    #[darling(default)]
-    unique: bool,
-    dtype: String
-}
-
-#[derive(FromDeriveInput)]
-#[darling(
-    attributes(table),
-    supports(struct_named)
-)]
-struct ModelInput {
-    ident: syn::Ident,
-    data: Data<(), ModelField>,
-    table_name: Option<String>
-}
+use parse::ModelInput;
 
 /// Automatically implement `Model` for your struct.
 /// 
@@ -38,26 +19,16 @@ struct ModelInput {
 pub fn derive(input: TokenStream) -> TokenStream {
     let opts = ModelInput::from_derive_input(&parse_macro_input!(input)).unwrap();
 
-    let ident = &opts.ident;
-
-    // The table name is either the provided or
-    // the snakecased type name
-    let table_name = match opts.table_name {
-        Some(table_name) => table_name,
-        None => stringify!(&opts.ident).to_lowercase()
-    };
+    let ident = opts.ident();
 
     // Retrieve the struct's fields
-    let fields = match opts.data {
-        Data::Struct(fields) => fields.fields,
-        _ => panic!("enums not supported")
-    };
+    let fields = opts.fields();
 
     // Get the fields' idents
     let field_idents = fields
-        .clone()
-        .into_iter()
-        .map(|f| f.ident.unwrap());
+        .map(|f| f.clone().ident());
+
+    let create_sql = opts.get_create_sql();
 
     // Generate the needed impl code
     let output = quote!(
@@ -68,6 +39,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 Ok(#ident {
                     #(#field_idents: row.try_get(stringify!(#field_idents))?),*
                 })
+            }
+
+            fn create_sql() -> String {
+                #create_sql.to_string()
             }
         }
     );

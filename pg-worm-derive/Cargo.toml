@@ -13,3 +13,4 @@ proc-macro2 = "1.0.56"
 quote = "1.0.27"
 syn = { version = "2.0.15", features = ["full"] }
 darling = "0.20"
+postgres-types = "0.2"
