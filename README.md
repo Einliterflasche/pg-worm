@@ -8,42 +8,37 @@ trait for easily parsing structs from `tokio_postgres::Model`.
 ## Usage
 
 ```rust
-use pg_worm::{Model, NoTls, connect};
+use pg_worm::tokio_postgres::NoTls;
+use pg_worm::{connect, Model, get_client};
 
 #[derive(Model)]
-struct Person {
-    #[column(dtype = "BIGSERIAL")]
+struct Book {
+    #[column(dtype = "BIGSERIAL", primary_key, unique)]
     id: i64,
-    #[column(dtype = "TEXT")]
-    name: String
+    #[column(dtype = "TEXT", unique)]
+    title: String,
 }
 
 #[tokio::main]
 async fn main() {
-    let conn = connect("postgres://me:me@localhost:5432", NoTls).await.unwrap();
-    tokio::spawn(async move { conn.await.unwrap() } );
+    let conn = connect("postgres://me:me@localhost:5432", NoTls)
+        .await
+        .expect("couln't connect to database");
+    tokio::spawn(async move { conn.await.unwrap() });
 
-    let client = pg_worm::get_client().expect("unable to connect to database");
+    pg_worm::register!(Book).await.unwrap();
 
-    client
-        .execute(
-            "CREATE TABLE IF NOT EXISTS person (
-                id BIGSERIAL PRIMARY KEY UNIQUE,
-                name TEXT
-            )",
-            &[]
-        ).await.unwrap();
+    let client = get_client().unwrap();
 
-    client
-        .execute(
-            "INSERT INTO person (name) VALUES ($1)",
-            &[&"Jesus"]
-        ).await.unwrap();
+    client.execute(
+        "INSERT INTO book (title) VALUES ($1)",
+        &[&"Bible"]
+    ).await.unwrap();
 
-    let rows = client.query("SELECT id, name FROM person", &[]).await.unwrap();
+    let books = client.query("SELECT id, title FROM book ORDER BY id", &[]).await.unwrap();
 
-    let person = Person::from_row(rows.first().unwrap()).unwrap();
-    assert_eq!(person.name, "Jesus");
-    assert_eq!(person.id, 1)
+    let bible = Book::from_row(books.first().unwrap()).unwrap();
+    assert_eq!(bible.title, "Bible");
+    assert_eq!(bible.id, 1);
 }
 ```
