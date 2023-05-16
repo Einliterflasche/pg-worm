@@ -54,7 +54,8 @@ impl ModelInput {
 
     pub fn get_create_sql(&self) -> String {
         format!(
-            "CREATE TABLE IF NOT EXISTS {} ({})",
+            "DROP TABLE IF EXISTS {} CASCADE; CREATE TABLE {} ({})",
+            self.table_name(),
             self.table_name(),
             self.fields()
                 .map(|f| f.get_create_sql())

@@ -21,6 +21,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let ident = opts.ident();
 
+    let table_name = opts.table_name();
+
     // Retrieve the struct's fields
     let fields = opts.fields();
 
@@ -32,9 +34,9 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     // Generate the needed impl code
     let output = quote!(
+        #[pg_worm::async_trait]
         impl Model<#ident> for #ident {
             fn from_row(row: &pg_worm::Row) -> Result<#ident, pg_worm::tokio_postgres::Error> {
-                let client = pg_worm::get_client();
                 // Parse each column into the corresponding field
                 Ok(#ident {
                     #(#field_idents: row.try_get(stringify!(#field_idents))?),*
@@ -43,6 +45,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
             fn create_sql() -> String {
                 #create_sql.to_string()
+            }
+
+            /// Panics if `connect` has not been executed or failed.
+            async fn select<I: Iterator<#ident>>() -> I {
+                let client = pg_worm::get_client().expect("not connected to db");
+                let rows = client.query(format!("SELECT * FROM {}", #table_name).as_str(), &[]).await.unwrap();
+                rows.iter().map(|r| #ident::from_row(r).expect("couldn't parse data"))
             }
         }
     );
