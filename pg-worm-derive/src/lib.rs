@@ -63,14 +63,6 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 Some(#ident::from_row(&rows[0]).unwrap())
             }
         }
-
-        pub struct Inserter;
-
-        impl Inserter {
-            pub async fn insert(title: String) -> Result<(), pg_worm::PgWormError> {
-                Ok(())
-            }
-        }
     );
 
     output.into()
