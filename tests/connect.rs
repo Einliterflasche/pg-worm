@@ -1,5 +1,5 @@
 use pg_worm::tokio_postgres::NoTls;
-use pg_worm::{connect, Model};
+use pg_worm::{connect, Model, get_client};
 
 #[derive(Model)]
 struct Book {
@@ -17,4 +17,11 @@ async fn connect_to_database() {
     tokio::spawn(async move { conn.await.unwrap() });
 
     pg_worm::register!(Book).await.unwrap();
+
+    get_client().unwrap().execute("INSERT INTO book (title) VALUES ('Foo')", &[]).await.unwrap();
+
+    let books = Book::select().await;
+
+    assert_eq!(books.len(), 1);
+    assert_eq!(books[0].title, "Foo");
 }

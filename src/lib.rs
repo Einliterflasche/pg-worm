@@ -29,20 +29,19 @@
 //! 
 //!     client.execute(
 //!         "INSERT INTO book (title) VALUES ($1)",
-//!         &[&"Bible"]
+//!         &[&"Foo"]
 //!     ).await.unwrap();
 //! 
-//!     let books = client.query("SELECT id, title FROM book ORDER BY id", &[]).await.unwrap();
-//! 
-//!     let bible = Book::from_row(books.first().unwrap()).unwrap();
-//!     assert_eq!(bible.title, "Bible");
-//!     assert_eq!(bible.id, 1);
+//!     let book = Book::select_one().await.unwrap();
+//!     assert_eq!(book.title, "Foo");
+//!     assert_eq!(book.id, 1);
 //! }
 //! ```
 
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
 
+pub use async_trait::async_trait;
 pub use pg_worm_derive::*;
 pub use tokio_postgres::{self, config, Client, NoTls, Row};
 
@@ -97,7 +96,7 @@ where
 /// This creates a table representing your model.
 pub async fn register_model<M: Model<M>>() -> Result<(), PgWormError> {
     if let Some(client) = get_client() {
-        client.execute(&M::create_sql(), &[]).await?;
+        client.batch_execute(&M::create_sql()).await?;
         return Ok(());
     }
 
@@ -113,13 +112,19 @@ macro_rules! register {
 
 /// This is the trait which you should derive for your model structs.
 ///
-/// It will provide the ORM functionality.
+/// It provides the ORM functionality.
+/// 
+#[async_trait]
 pub trait Model<T> {
     /// Parse a `tokio_postgres::Row` to your model.
     fn from_row(row: &Row) -> Result<T, tokio_postgres::Error>;
 
     #[must_use]
     fn create_sql() -> String;
+
+    #[must_use]
+    async fn select() -> Vec<T>;
+    async fn select_one() -> Option<T>;
 }
 
 #[cfg(test)]
@@ -127,6 +132,7 @@ mod tests {
     use pg_worm::Model;
 
     #[derive(Model)]
+    #[table(table_name = "personas")]
     struct Person {
         #[column(dtype = "BIGSERIAL", primary_key, unique)]
         id: i64,
@@ -138,7 +144,7 @@ mod tests {
     fn sql_create_table() {
         assert_eq!(
             Person::create_sql(),
-            "CREATE TABLE IF NOT EXISTS person (id BIGSERIAL PRIMARY KEY UNIQUE, name TEXT)"
+            "DROP TABLE IF EXISTS personas CASCADE; CREATE TABLE personas (id BIGSERIAL PRIMARY KEY UNIQUE, name TEXT)"
         );
     }
 }

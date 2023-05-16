@@ -26,19 +26,17 @@ async fn main() {
         .expect("couln't connect to database");
     tokio::spawn(async move { conn.await.unwrap() });
 
+    // Drops and recreates table
     pg_worm::register!(Book).await.unwrap();
 
-    let client = get_client().unwrap();
-
-    client.execute(
+    get_client().unwrap().execute(
         "INSERT INTO book (title) VALUES ($1)",
-        &[&"Bible"]
+        &[&"Foo"]
     ).await.unwrap();
 
-    let books = client.query("SELECT id, title FROM book ORDER BY id", &[]).await.unwrap();
+    let books = Book::select().await.unwrap();
 
-    let bible = Book::from_row(books.first().unwrap()).unwrap();
-    assert_eq!(bible.title, "Bible");
-    assert_eq!(bible.id, 1);
+    assert_eq!(books.len(), 1);
+    assert_eq!(books[0].title, "Foo");
 }
 ```
