@@ -48,10 +48,27 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
 
             /// Panics if `connect` has not been executed or failed.
-            async fn select<I: Iterator<#ident>>() -> I {
+            async fn select() -> Vec<#ident> {
                 let client = pg_worm::get_client().expect("not connected to db");
                 let rows = client.query(format!("SELECT * FROM {}", #table_name).as_str(), &[]).await.unwrap();
-                rows.iter().map(|r| #ident::from_row(r).expect("couldn't parse data"))
+                rows.iter().map(|r| #ident::from_row(r).expect("couldn't parse data")).collect()
+            }
+
+            async fn select_one() -> Option<#ident> {
+                let client = pg_worm::get_client().expect("not connected to db");
+                let rows = client.query(format!("SELECT * FROM {} LIMIT 1", #table_name).as_str(), &[]).await.unwrap();
+                if rows.len() != 1 {
+                    return None;
+                }
+                Some(#ident::from_row(&rows[0]).unwrap())
+            }
+        }
+
+        pub struct Inserter;
+
+        impl Inserter {
+            pub async fn insert(title: String) -> Result<(), pg_worm::PgWormError> {
+                Ok(())
             }
         }
     );

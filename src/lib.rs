@@ -29,14 +29,12 @@
 //! 
 //!     client.execute(
 //!         "INSERT INTO book (title) VALUES ($1)",
-//!         &[&"Bible"]
+//!         &[&"Foo"]
 //!     ).await.unwrap();
 //! 
-//!     let books = client.query("SELECT id, title FROM book ORDER BY id", &[]).await.unwrap();
-//! 
-//!     let bible = Book::from_row(books.first().unwrap()).unwrap();
-//!     assert_eq!(bible.title, "Bible");
-//!     assert_eq!(bible.id, 1);
+//!     let book = Book::select_one().await.unwrap();
+//!     assert_eq!(book.title, "Foo");
+//!     assert_eq!(book.id, 1);
 //! }
 //! ```
 
@@ -124,7 +122,9 @@ pub trait Model<T> {
     #[must_use]
     fn create_sql() -> String;
 
-    async fn select<I: Iterator<Item = T>>() -> I;
+    #[must_use]
+    async fn select() -> Vec<T>;
+    async fn select_one() -> Option<T>;
 }
 
 #[cfg(test)]
