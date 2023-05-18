@@ -168,7 +168,7 @@ mod tests {
     #[derive(Model)]
     #[table(table_name = "personas")]
     struct Person {
-        #[column(primary_key)]
+        #[column(primary_key, auto)]
         id: i64,
         name: String,
     }

@@ -16,7 +16,7 @@ pub struct ModelField {
     dtype: Option<String>,
     column_name: Option<String>,
     #[darling(default)]
-    auto_generated: bool,
+    auto: bool,
 }
 
 #[derive(FromDeriveInput)]
@@ -73,7 +73,7 @@ impl ModelInput {
 
 impl ModelField {
     pub fn auto_generated(&self) -> bool {
-        self.auto_generated
+        self.auto
             || self.primary_key
             || self.dtype.as_ref().is_some()
                 && self
@@ -152,6 +152,10 @@ impl ModelField {
     /// # Example
     ///
     pub fn column_creation_sql(&self) -> String {
+        if self.primary_key && self.unique {
+            panic!("primary keys are unique, remove unnecessary `unique` on {:?}", self.ident().to_string())
+        }
+
         // The list of "args" for the sql statement.
         // Includes at least the column name and datatype.
         let mut args = vec![self.column_name(), self.pg_datatype().to_string()];
@@ -167,7 +171,8 @@ impl ModelField {
         }
 
         // Add possible args
-        arg!(self.primary_key, "PRIMARY KEY GENERATED ALWAYS AS IDENTITY");
+        arg!(self.primary_key, "PRIMARY KEY");
+        arg!(self.auto, "GENERATED ALWAYS AS IDENTITY");
         arg!(self.unique, "UNIQUE");
 
         // Join the args, seperated by a space and return them
@@ -177,8 +182,8 @@ impl ModelField {
     pub fn insert_arg_type(&self) -> TokenStream {
         let ty = self.ty().to_token_stream();
         if ty.to_string() == "String" {
-            return quote!(impl Into<String> + pg_worm::pg::types::ToSql + Sync)
+            return quote!(impl Into<String> + pg_worm::pg::types::ToSql + Sync);
         }
-        return ty
+        return ty;
     }
 }

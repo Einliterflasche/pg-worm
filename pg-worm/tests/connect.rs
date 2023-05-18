@@ -2,7 +2,7 @@ use pg_worm::{connect, register, Model, NoTls};
 
 #[derive(Model)]
 struct Book {
-    #[column(primary_key)]
+    #[column(primary_key, auto)]
     id: i64,
     #[column(unique)]
     title: String,
