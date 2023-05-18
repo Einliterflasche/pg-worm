@@ -25,7 +25,7 @@ async fn main() -> Result<(), pg_worm::Error> {
     // Boilerplate needed for the connection to start listening.
     tokio::spawn(async move { conn.await.unwrap() });
 
-    // First, register the model with the pg_worm client.
+    // Then, register the model with the pg_worm client.
     //
     // This creates a completely new table.
     // Beware that should there already be a table
