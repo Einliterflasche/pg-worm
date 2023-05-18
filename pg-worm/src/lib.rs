@@ -162,6 +162,29 @@ where
     Ok(conn)
 }
 
+/// Convenience macro for connecting the pg-worm client
+/// to a database server. Essentially writes the boilerplate
+/// code needed.
+///
+/// Needs `tokio` to work.
+///
+/// # Panics
+/// Panics when the connection is closed due to a fatal error.
+#[macro_export]
+macro_rules! connect {
+    ($config:literal, $tls:expr) => {
+        async {
+            match $crate::connect($config, $tls).await {
+                Ok(conn) => {
+                    tokio::spawn(async move { conn.await.expect("fatal connection error") });
+                    return Ok(());
+                }
+                Err(err) => return Err(err),
+            }
+        }
+    };
+}
+
 /// Register your model with the database.
 /// This creates a table representing your model.
 ///

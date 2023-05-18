@@ -36,17 +36,13 @@ struct User {
 #[tokio::main]
 async fn main() -> Result<(), pg_worm::Error> {
     // First, connect to your server.
-    let conn = connect("postgres://me:me@localhost:5432", NoTls).await?;
-    // Sadly, there is still boilerplate necessary for
-    // actually starting the connection. We are working on 
-    // making this more convenient too.
-    tokio::spawn(async move { conn.await.expect("unable to connect") });
+    connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
     // Finally, register your `Model`.
     // This creates a new table, but be aware
     // that any old table with the same name 
     // will be dropped and you _will_ lose your data.
-    register!(User).await.unwrap();
+    register!(User).await?;
 
     // Now you can start doing what you really
     // want to do - after just 3 lines of setup.

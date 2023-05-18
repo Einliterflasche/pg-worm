@@ -11,9 +11,7 @@ struct Book {
 #[tokio::test]
 async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done _once_.
-    let conn = connect("postgres://me:me@localhost:5432", NoTls).await?;
-    // Boilerplate needed for the connection to start listening.
-    tokio::spawn(async move { conn.await.unwrap() });
+    connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
     // Then, register the model with the pg_worm client.
     //
