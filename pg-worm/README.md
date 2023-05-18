@@ -12,9 +12,9 @@ use pg_worm::{register, connect, Model, NoTls};
 
 #[derive(Model)]
 struct Book {
-    #[column(dtype = "BIGSERIAL", primary_key, unique)]
+    #[column(primary_key)]
     id: i64,
-    #[column(dtype = "TEXT", unique)]
+    #[column(unique)]
     title: String,
 }
 
