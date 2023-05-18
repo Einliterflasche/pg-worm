@@ -1,5 +1,7 @@
 use darling::{ast::Data, FromDeriveInput, FromField};
 use postgres_types::Type;
+use proc_macro2::TokenStream;
+use quote::{quote, ToTokens};
 use syn::Ident;
 
 #[derive(Clone, FromField)]
@@ -136,6 +138,7 @@ impl ModelField {
                             self.ident().to_string()
                         )
                     },
+            syn::Type::Reference(_) => panic!("field {:?} may not be reference", self.ident().to_string()),
             _ => todo!(
                 "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = 'DataType']`", 
                 self.ident().to_string()
@@ -169,5 +172,13 @@ impl ModelField {
 
         // Join the args, seperated by a space and return them
         args.join(" ")
+    }
+
+    pub fn insert_arg_type(&self) -> TokenStream {
+        let ty = self.ty().to_token_stream();
+        if ty.to_string() == "String" {
+            return quote!(impl Into<String> + pg_worm::pg::types::ToSql + Sync)
+        }
+        return ty
     }
 }

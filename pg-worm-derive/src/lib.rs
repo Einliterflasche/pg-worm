@@ -2,7 +2,7 @@ mod parse;
 
 use darling::FromDeriveInput;
 use proc_macro::{self, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::parse_macro_input;
 
 use parse::ModelInput;
@@ -54,7 +54,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let insert_column_dtypes = insert_fields
         .clone()
         .into_iter()
-        .map(|f| f.ty())
+        .map(|f| f.insert_arg_type())
         .collect::<Vec<_>>();
 
     let table_creation_sql = opts.table_creation_sql();
