@@ -119,7 +119,7 @@ impl ModelField {
                 _ => panic!("couldn't find postgres type `{}`", dtype),
             };
 
-            ty
+            return ty;
         }
 
         match self.ty() {
@@ -187,6 +187,6 @@ impl ModelField {
         if ty.to_string() == "String" {
             return quote!(impl Into<String> + pg_worm::pg::types::ToSql + Sync);
         }
-        return ty;
+        ty
     }
 }
