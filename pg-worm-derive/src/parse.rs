@@ -1,4 +1,5 @@
 use darling::{ast::Data, FromDeriveInput, FromField};
+use postgres_types::Type;
 use syn::Ident;
 
 #[derive(Clone, FromField)]
@@ -12,6 +13,8 @@ pub struct ModelField {
     unique: bool,
     dtype: Option<String>,
     column_name: Option<String>,
+    #[darling(default)]
+    auto_generated: bool,
 }
 
 #[derive(FromDeriveInput)]
@@ -49,17 +52,17 @@ impl ModelInput {
         }
     }
 
-    pub fn column_fields(&self) -> impl Iterator<Item = &ModelField> {
-        self.fields().filter(|f| f.must_be_passed())
+    pub fn insert_fields(&self) -> impl Iterator<Item = &ModelField> {
+        self.fields().filter(|f| !f.auto_generated())
     }
 
-    pub fn get_create_sql(&self) -> String {
+    pub fn table_creation_sql(&self) -> String {
         format!(
             "DROP TABLE IF EXISTS {} CASCADE; CREATE TABLE {} ({})",
             self.table_name(),
             self.table_name(),
             self.fields()
-                .map(|f| f.get_create_sql())
+                .map(|f| f.column_creation_sql())
                 .collect::<Vec<String>>()
                 .join(", ")
         )
@@ -67,12 +70,16 @@ impl ModelInput {
 }
 
 impl ModelField {
-    pub fn must_be_passed(&self) -> bool {
-        if self.get_datatype().to_lowercase().find("serial").is_some() {
-            return false;
-        }
-
-        true
+    pub fn auto_generated(&self) -> bool {
+        self.auto_generated
+            || self.primary_key
+            || self.dtype.as_ref().is_some()
+                && self
+                    .dtype
+                    .as_ref()
+                    .unwrap()
+                    .to_lowercase()
+                    .contains("serial")
     }
 
     pub fn ty(&self) -> &syn::Type {
@@ -96,15 +103,44 @@ impl ModelField {
     }
 
     /// Get the column's PostgreSQL datatype.
-    pub fn get_datatype(&self) -> String {
+    pub fn pg_datatype(&self) -> Type {
         if let Some(dtype) = &self.dtype {
-            return dtype.clone();
+            let ty = match dtype.to_lowercase().as_str() {
+                "bool" | "boolean" => Type::BOOL,
+                "text" => Type::TEXT,
+                "int" | "integer" | "int4" => Type::INT4,
+                "bigint" | "int8" => Type::INT8,
+                "smallint" | "int2" => Type::INT2,
+                "real" => Type::FLOAT4,
+                "double precision" => Type::FLOAT8,
+                "bigserial" => Type::INT8,
+                _ => panic!("couldn't find postgres type `{}`", dtype),
+            };
+
+            return ty;
         }
 
-        todo!(
-            "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = 'DataType']`", 
-            self.ident().to_string()
-        )
+        match self.ty() {
+            syn::Type::Path(type_path) => match type_path
+                    .path
+                    .segments
+                    .first().unwrap()
+                    .ident.to_string().as_str() {
+                        "String" => Type::TEXT,
+                        "i64" => Type::INT8,
+                        "f32" => Type::FLOAT4,
+                        "f64" => Type::FLOAT8,
+                        "bool" => Type::BOOL,
+                        _ => todo!(
+                            "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = 'DataType']`", 
+                            self.ident().to_string()
+                        )
+                    },
+            _ => todo!(
+                "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = 'DataType']`", 
+                self.ident().to_string()
+            )
+        }
     }
 
     /// Get the SQL representing the column needed
@@ -112,10 +148,10 @@ impl ModelField {
     ///
     /// # Example
     ///
-    pub fn get_create_sql(&self) -> String {
+    pub fn column_creation_sql(&self) -> String {
         // The list of "args" for the sql statement.
         // Includes at least the column name and datatype.
-        let mut args = vec![self.column_name(), self.get_datatype()];
+        let mut args = vec![self.column_name(), self.pg_datatype().to_string()];
 
         // This macro allows adding an arg to the list
         // under a condition.
@@ -128,7 +164,7 @@ impl ModelField {
         }
 
         // Add possible args
-        arg!(self.primary_key, "PRIMARY KEY");
+        arg!(self.primary_key, "PRIMARY KEY GENERATED ALWAYS AS IDENTITY");
         arg!(self.unique, "UNIQUE");
 
         // Join the args, seperated by a space and return them

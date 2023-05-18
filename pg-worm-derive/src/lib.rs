@@ -33,31 +33,31 @@ pub fn derive(input: TokenStream) -> TokenStream {
     // Get the fields' idents
     let field_idents = fields.map(|f| f.clone().ident()).collect::<Vec<_>>();
 
-    let column_fields = opts.column_fields().collect::<Vec<_>>();
-    let column_counter = (1..=column_fields.len())
+    let insert_fields = opts.insert_fields().collect::<Vec<_>>();
+    let insert_columns_counter = (1..=insert_fields.len())
         .map(|i| format!("${i}"))
-        .collect::<Vec<_>>();
-    let column_counter_one = column_counter.join(", ");
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    let column_names = column_fields
+    let insert_columns = insert_fields
         .clone()
         .into_iter()
         .map(|f| f.column_name())
-        .collect::<Vec<_>>();
-    let column_names_one = column_names.join(", ");
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    let column_field_idents = column_fields
+    let insert_columns_idents = insert_fields
         .clone()
         .into_iter()
         .map(|f| f.ident())
         .collect::<Vec<_>>();
-    let column_field_types = column_fields
+    let insert_column_dtypes = insert_fields
         .clone()
         .into_iter()
         .map(|f| f.ty())
         .collect::<Vec<_>>();
 
-    let create_table_sql = opts.get_create_sql();
+    let table_creation_sql = opts.table_creation_sql();
 
     // Generate the needed impl code
     let output = quote!(
@@ -74,8 +74,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
         #[pg_worm::async_trait]
         impl Model<#ident> for #ident {
-            fn _create_table_sql() -> &'static str {
-                #create_table_sql
+            fn _table_creation_sql() -> &'static str {
+                #table_creation_sql
             }
 
             async fn select() -> Vec<#ident> {
@@ -118,13 +118,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
             /// }
             /// ```
             pub async fn insert(
-                #(#column_field_idents: #column_field_types),*
+                #(#insert_columns_idents: #insert_column_dtypes),*
             ) -> Result<(), pg_worm::Error> {
                 let stmt = format!(
                     "INSERT INTO {} ({}) VALUES ({})",
                     #table_name,
-                    #column_names_one,
-                    #column_counter_one
+                    #insert_columns,
+                    #insert_columns_counter
                 );
 
                 let client = pg_worm::_get_client()?;
@@ -132,7 +132,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 client.execute(
                     stmt.as_str(),
                     &[
-                        #(&#column_field_idents), *
+                        #(&#insert_columns_idents), *
                     ]
                 ).await?;
 

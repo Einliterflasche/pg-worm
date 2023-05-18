@@ -35,7 +35,7 @@ pub trait Model<T>: for<'a> TryFrom<&'a Row> {
     ///
     /// *_DO NOT USE_*
     #[must_use]
-    fn _create_table_sql() -> &'static str;
+    fn _table_creation_sql() -> &'static str;
 
     /// Retrieve all entities from the table.
     ///
@@ -105,7 +105,7 @@ where
 /// ```ignore
 /// #[derive(Model)]
 /// struct Foo {
-///     #[column(dtype = "BIGSERIAL")]
+///     #[column(primary_key)]
 ///     id: i64
 /// }
 ///
@@ -117,7 +117,7 @@ where
 /// ```
 pub async fn register_model<M: Model<M>>() -> Result<(), Error> {
     let client = _get_client()?;
-    client.batch_execute(M::_create_table_sql()).await?;
+    client.batch_execute(M::_table_creation_sql()).await?;
 
     Ok(())
 }
@@ -142,7 +142,7 @@ pub async fn register_model<M: Model<M>>() -> Result<(), Error> {
 ///
 /// #[derive(Model)]
 /// struct Foo {
-///     #[column(dtype = "BIGSERIAL")]
+///     #[column(primary_ley)]
 ///     id: i64
 /// }
 ///
@@ -161,22 +161,23 @@ macro_rules! register {
 
 #[cfg(test)]
 mod tests {
+    #![allow(dead_code)]
+
     use pg_worm::Model;
 
     #[derive(Model)]
     #[table(table_name = "personas")]
     struct Person {
-        #[column(dtype = "BIGSERIAL", primary_key, unique)]
+        #[column(primary_key)]
         id: i64,
-        #[column(dtype = "TEXT")]
         name: String,
     }
 
     #[test]
     fn sql_create_table() {
         assert_eq!(
-            Person::_create_table_sql(),
-            "DROP TABLE IF EXISTS personas CASCADE; CREATE TABLE personas (id BIGSERIAL PRIMARY KEY UNIQUE, name TEXT)"
+            Person::_table_creation_sql(),
+            "DROP TABLE IF EXISTS personas CASCADE; CREATE TABLE personas (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text)"
         );
     }
 }

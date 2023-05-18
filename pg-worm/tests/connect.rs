@@ -2,9 +2,9 @@ use pg_worm::{connect, register, Model, NoTls};
 
 #[derive(Model)]
 struct Book {
-    #[column(dtype = "BIGSERIAL", primary_key, unique)]
+    #[column(primary_key)]
     id: i64,
-    #[column(dtype = "TEXT", unique)]
+    #[column(unique)]
     title: String,
 }
 
@@ -29,10 +29,10 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     Book::insert("Foo - Part II".to_string()).await?;
 
     // Query all entities from the database
-    let books = Book::select().await;
-
-    assert_eq!(books.len(), 1);
-    assert_eq!(books[0].title, "Foo - Part II");
+    let books: Vec<Book> = Book::select().await;
+    assert_eq!(books.len(), 2);
+    assert_eq!(books[0].id, 1);
+    assert_eq!(books[0].title, "Foo - Part I");
 
     let book = Book::select_one().await;
     assert!(book.is_some());
