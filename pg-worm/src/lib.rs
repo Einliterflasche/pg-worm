@@ -30,14 +30,10 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), pg_worm::Error> {
-//!     // First, connect to your server.
-//!     let conn = connect("postgres://me:me@localhost:5432", NoTls).await?;
-//!     // Sadly, there is still boilerplate necessary for
-//!     // actually starting the connection. We are working on
-//!     // making this more convenient too.
-//!     tokio::spawn(async move { conn.await.expect("unable to connect") });
+//!     // Simply connect to your server.
+//!     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 //!
-//!     // Finally, register your `Model`.
+//!     // Then register your `Model`.
 //!     // This creates a new table, but be aware
 //!     // that any old table with the same name
 //!     // will be dropped and you _will_ lose your data.
@@ -53,15 +49,17 @@
 //!     User::insert("Kate".to_string(), "another_hashed_password").await?;
 //!
 //!     // Querying data is just as easy:
+//! 
 //!     // Retrieve all entities there are...
 //!     let all_users: Vec<User> = User::select().await;     
 //!     assert_eq!(all_users.len(), 2);
 //!     
-//!     // Or just (n)one
+//!     // Or just one...
 //!     let first_user: Option<User> = User::select_one().await;
 //!     assert!(first_user.is_some());
 //!     assert_eq!(first_user.unwrap().name, "Bob");
 //!     
+//!     // Graceful shutdown
 //!     Ok(())
 //! }
 //! ```
@@ -127,6 +125,9 @@ static CLIENT: OnceCell<Client> = OnceCell::new();
 
 /// Get a reference to the client, if a connection has been made.
 /// Returns `Err(Error::NotConnected)` otherwise.
+///
+/// **This is a private library function needed to derive
+/// the `Model` trait. Do not use!**
 #[inline]
 pub fn _get_client() -> Result<&'static Client, Error> {
     if let Some(client) = CLIENT.get() {
@@ -162,9 +163,10 @@ where
     Ok(conn)
 }
 
-/// Convenience macro for connecting the pg-worm client
+/// Convenience macro for connecting the `pg-worm` client
 /// to a database server. Essentially writes the boilerplate
-/// code needed.
+/// code needed. See the [`tokio_postgres`](https://docs.rs/tokio-postgres/latest/tokio_postgres/config/struct.Config.html)
+/// documentation for more information on the config format.
 ///
 /// Needs `tokio` to work.
 ///

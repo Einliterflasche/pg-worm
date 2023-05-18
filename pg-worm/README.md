@@ -22,30 +22,33 @@ Here's a quick example:
 use pg_worm::{register, connect, NoTls, Model};
 
 #[derive(Model)]
-#[table(table_name = "users")]                  // Postgres doesn't allow tables named `user`
-                                                // - no problem! Simply rename the table.
+// Postgres doesn't allow tables named `user`
+#[table(table_name = "users")]!
 struct User {
-    #[column(primary_key, auto)]                // Set a primary key which automatically increments    
+    #[column(primary_key, auto)]
+    // A primary key which automatically increments
     id: i64,
-    #[column(unique)]                           // Enable the uniqueness constraint
+    // A column which requires unique values
+    #[column(unique)]
     name: String,
-    #[column(column_name = "pwd_hash")]         // You can rename columns too
+    // You can rename columns too
+    #[column(column_name = "pwd_hash")]
     password: String
 } 
 
-#[tokio::main]
+#[tokio::main]!
 async fn main() -> Result<(), pg_worm::Error> {
-    // First, connect to your server.
+    // Simply connect to your server.
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
-    // Finally, register your `Model`.
+    // Then, register your `Model`.
     // This creates a new table, but be aware
     // that any old table with the same name 
     // will be dropped and you _will_ lose your data.
     register!(User).await?;
 
     // Now you can start doing what you really
-    // want to do - after just 3 lines of setup.
+    // want to do - after just 3 lines of setup.!
 
     // First, we will create some new users.
     // Notice, how you can pass `&str` as well as `String` 
@@ -54,15 +57,17 @@ async fn main() -> Result<(), pg_worm::Error> {
     User::insert("Kate".to_string(), "another_hashed_password").await?;
 
     // Querying data is just as easy:
+
     // Retrieve all entities there are...
     let all_users: Vec<User> = User::select().await;     
     assert_eq!(all_users.len(), 2);
     
-    // Or just (n)one
+    // Or just one...
     let first_user: Option<User> = User::select_one().await;
     assert!(first_user.is_some());
     assert_eq!(first_user.unwrap().name, "Bob");
     
+    // Graceful shutdown
     Ok(())
 }
 ```
