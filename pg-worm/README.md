@@ -29,7 +29,7 @@ async fn main() -> Result<(), pg_worm::Error> {
     //
     // This creates a completely new table.
     // Beware that should there already be a table
-    // with the same name, it is dropped.
+    // with the same name, it will be dropped.
     register!(Book).await?;
 
     // Next, insert a new book.
