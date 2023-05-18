@@ -119,7 +119,7 @@ impl ModelField {
                 _ => panic!("couldn't find postgres type `{}`", dtype),
             };
 
-            return ty;
+            ty
         }
 
         match self.ty() {
