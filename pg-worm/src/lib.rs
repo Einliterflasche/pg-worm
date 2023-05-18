@@ -4,10 +4,10 @@
 extern crate self as pg_worm;
 
 pub use async_trait::async_trait;
+pub use pg::{NoTls, Row};
 pub use pg_worm_derive::Model;
 /// This crate's reexport of the `tokio_postgres` crate.
 pub use tokio_postgres as pg;
-pub use pg::{NoTls, Row};
 
 use once_cell::sync::OnceCell;
 use pg::{tls::MakeTlsConnect, Client, Connection, Socket};

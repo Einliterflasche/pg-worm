@@ -1,4 +1,4 @@
-use darling::{FromDeriveInput, FromField, ast::Data};
+use darling::{ast::Data, FromDeriveInput, FromField};
 use syn::Ident;
 
 #[derive(Clone, FromField)]
@@ -15,14 +15,11 @@ pub struct ModelField {
 }
 
 #[derive(FromDeriveInput)]
-#[darling(
-    attributes(table),
-    supports(struct_named)
-)]
+#[darling(attributes(table), supports(struct_named))]
 pub struct ModelInput {
     ident: syn::Ident,
     data: Data<(), ModelField>,
-    table_name: Option<String>
+    table_name: Option<String>,
 }
 
 impl ModelInput {
@@ -40,25 +37,20 @@ impl ModelInput {
 
     pub fn n_fields(&self) -> usize {
         match &self.data {
-            Data::Struct(fields) => 
-                fields.fields.len(),
-            _ => panic!("only named struct supported")
+            Data::Struct(fields) => fields.fields.len(),
+            _ => panic!("only named struct supported"),
         }
     }
 
     pub fn fields(&self) -> impl Iterator<Item = &ModelField> {
         match &self.data {
-            Data::Struct(fields) => 
-                fields.fields
-                    .iter(),
-            _ => panic!("only named struct supported")
+            Data::Struct(fields) => fields.fields.iter(),
+            _ => panic!("only named struct supported"),
         }
     }
 
     pub fn column_fields(&self) -> impl Iterator<Item = &ModelField> {
-        self
-            .fields()
-            .filter(|f| f.must_be_passed())
+        self.fields().filter(|f| f.must_be_passed())
     }
 
     pub fn get_create_sql(&self) -> String {
@@ -76,11 +68,7 @@ impl ModelInput {
 
 impl ModelField {
     pub fn must_be_passed(&self) -> bool {
-        if self
-            .get_datatype()
-            .to_lowercase()
-            .find("serial")
-            .is_some() {
+        if self.get_datatype().to_lowercase().find("serial").is_some() {
             return false;
         }
 
@@ -121,17 +109,13 @@ impl ModelField {
 
     /// Get the SQL representing the column needed
     /// for creating a table.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     pub fn get_create_sql(&self) -> String {
-        
         // The list of "args" for the sql statement.
         // Includes at least the column name and datatype.
-        let mut args = vec![
-            self.column_name(),
-            self.get_datatype()
-        ];
+        let mut args = vec![self.column_name(), self.get_datatype()];
 
         // This macro allows adding an arg to the list
         // under a condition.

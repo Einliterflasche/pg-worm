@@ -19,7 +19,7 @@ tokio-postgres = "0.7"
 once_cell = "1.17"
 async-trait = "0.1"
 
-pg-worm-derive = { version = "0.1" }
+pg-worm-derive = { version = "0.1", path = "../pg-worm-derive" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
