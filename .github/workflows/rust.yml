@@ -18,6 +18,10 @@ jobs:
     - name: Format
       run: cargo fmt
     - name: Run tests release
-      run: cargo test --release --verbose
+      run: |
+        cargo test --lib --release --verbose
+        cargo test --doc --release --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: |
+        cargo test --lib --verbose
+        cargo test --doc --verbose
