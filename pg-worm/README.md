@@ -1,3 +1,5 @@
+![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg)
+
 # `pg-worm`
 ### *P*ost*g*reSQL's *W*orst *ORM*
 
