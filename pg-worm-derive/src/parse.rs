@@ -6,9 +6,6 @@ use syn::Ident;
 pub struct ModelField {
     ident: Option<syn::Ident>,
     ty: syn::Type,
-    /// Doesn't do anything as of yet.
-    #[darling(default)]
-    no: bool,
     #[darling(default)]
     primary_key: bool,
     #[darling(default)]
@@ -41,15 +38,27 @@ impl ModelInput {
         &self.ident
     }
 
+    pub fn n_fields(&self) -> usize {
+        match &self.data {
+            Data::Struct(fields) => 
+                fields.fields.len(),
+            _ => panic!("only named struct supported")
+        }
+    }
+
     pub fn fields(&self) -> impl Iterator<Item = &ModelField> {
         match &self.data {
             Data::Struct(fields) => 
                 fields.fields
                     .iter(),
-                    // Skip fields marked with `column(no)`
-                    // .filter(|f| !f.no),
             _ => panic!("only named struct supported")
         }
+    }
+
+    pub fn column_fields(&self) -> impl Iterator<Item = &ModelField> {
+        self
+            .fields()
+            .filter(|f| f.must_be_passed())
     }
 
     pub fn get_create_sql(&self) -> String {
@@ -66,6 +75,22 @@ impl ModelInput {
 }
 
 impl ModelField {
+    pub fn must_be_passed(&self) -> bool {
+        if self
+            .get_datatype()
+            .to_lowercase()
+            .find("serial")
+            .is_some() {
+            return false;
+        }
+
+        true
+    }
+
+    pub fn ty(&self) -> &syn::Type {
+        &self.ty
+    }
+
     /// Get the field's identifier.
     pub fn ident(&self) -> Ident {
         self.ident

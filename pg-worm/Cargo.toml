@@ -1,21 +1,25 @@
 [package]
-name = "pg-worm-derive"
-description = "Proc macro for the pg-worm crate."
+name = "pg-worm"
 version = "0.1.0"
 edition = "2021"
 authors = ["Einliterflasche <einliterflasche@pm.me>"]
 license = "MIT OR Apache-2.0"
+description = "An easy to use, straightforward and async ORM for PostgreSQL databases"
 keywords = ["database", "postgresql", "postgres", "orm", "async"]
 categories = ["database", "asynchronous"]
 repository = "https://github.com/Einliterflasche/pg-worm"
 homepage = "https://github.com/Einliterflasche/pg-worm"
 
-[lib]
-proc-macro = true
+[badges]
+maintenance = { status = "experimental" }
 
 [dependencies]
-proc-macro2 = "1.0.56"
-quote = "1.0.27"
-syn = { version = "2.0.15", features = ["full"] }
-darling = "0.20"
-postgres-types = "0.2"
+thiserror = "1.0"
+tokio-postgres = "0.7"
+once_cell = "1.17"
+async-trait = "0.1"
+
+pg-worm-derive = { version = "0.1", path = "../pg-worm-derive" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
