@@ -153,7 +153,10 @@ impl ModelField {
     ///
     pub fn column_creation_sql(&self) -> String {
         if self.primary_key && self.unique {
-            panic!("primary keys are unique, remove unnecessary `unique` on {:?}", self.ident().to_string())
+            panic!(
+                "primary keys are unique, remove unnecessary `unique` on {:?}",
+                self.ident().to_string()
+            )
         }
 
         // The list of "args" for the sql statement.
