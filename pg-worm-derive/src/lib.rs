@@ -27,14 +27,19 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let table_name = opts.table_name();
 
     // Retrieve the struct's fields
-    let fields = opts.fields();
+    let fields = opts.fields().collect::<Vec<_>>();
 
     if opts.n_fields() == 0 {
         panic!("struct must have at least one field to become a `Model`")
     }
 
     // Get the fields' idents
-    let field_idents = fields.map(|f| f.clone().ident()).collect::<Vec<_>>();
+    let field_idents = fields
+        .clone()
+        .into_iter()
+        .map(|f| f.clone().ident())
+        .collect::<Vec<_>>();
+    let column_names = fields.iter().map(|f| f.column_name()).collect::<Vec<_>>();
 
     let insert_fields = opts.insert_fields().collect::<Vec<_>>();
     let insert_columns_counter = (1..=insert_fields.len())
@@ -70,7 +75,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             fn try_from(value: &'a pg_worm::Row) -> Result<#ident, Self::Error> {
                 // Parse each column into the corresponding field
                 Ok(#ident {
-                    #(#field_idents: value.try_get(stringify!(#field_idents))?),*
+                    #(#field_idents: value.try_get(#column_names).expect("asdasd")),*
                 })
             }
         }
