@@ -63,25 +63,24 @@
 //!     Ok(())
 //! }
 //! ```
-//! 
-//! 
+//!
+//!
 //! ## Filters
-//! Filters are way to easily using `WHERE` clauses in your queries. 
-//! 
+//! Filters are way to easily using `WHERE` clauses in your queries.
+//!
 //! Unless otherwise specified they are methods on the column constants and can be called like so:
-//! 
-//! ```
+//!
+//! ```ignore
 //! MyModel::select(MyModel::my_field.eq(5));
 //! ```
-//! 
+//!
 //! Currently the following filter functions are supported:
-//! 
+//!
 //!  * `Filter::all()` - doesn't check anything
 //!  * `eq(val)` - checks whether the column value is equal to something
 //!  * `neq(val)` - checks whether the column value is not equal to something
 //!  * `one_of(Vec<val>)` - checks whether the column value is one of the ones specified
 //!  * `none_of(Vec<val>)` - checks whether the column value is not one of the ones specified
-
 
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
@@ -350,7 +349,7 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
 
     pub fn one_of(&self, values: Vec<impl Into<T>>) -> Filter {
         // Early return if no values are supplied
-        if values.len() == 0 {
+        if values.is_empty() {
             return Filter::all();
         }
 
@@ -372,7 +371,7 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
 
     pub fn none_of(&self, values: Vec<impl Into<T>>) -> Filter {
         // Early return if no values are supplied
-        if values.len() == 0 {
+        if values.is_empty() {
             return Filter::all();
         }
 
