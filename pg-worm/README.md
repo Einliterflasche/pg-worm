@@ -63,9 +63,9 @@ async fn main() -> Result<(), pg_worm::Error> {
     assert_eq!(all_users.len(), 2);
     
     // Or just one...
-    let first_user: Option<User> = User::select_one().await;
-    assert!(first_user.is_some());
-    assert_eq!(first_user.unwrap().name, "Bob");
+    let bob: Option<User> = User::select_one(User::name.eq("Bob")).await;
+    assert!(bob.is_some());
+    assert_eq!(bob.unwrap().name, "Bob");
     
     // Graceful shutdown
     Ok(())
