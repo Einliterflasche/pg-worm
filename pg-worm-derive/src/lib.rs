@@ -155,6 +155,35 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 // Else parse and return the first entity fetched
                 Some(#ident::try_from(&rows[0]).unwrap())
             }
+
+            async fn delete(filter: pg_worm::Filter) -> u64 {
+                // Retrieve client. Panic if not connected
+                let client = pg_worm::_get_client()
+                    .expect("not connected to db");
+
+                // Convert args to correct datatype
+                let args: Vec<&(dyn pg_worm::pg::types::ToSql + Sync)> = filter
+                    ._args()
+                    .into_iter()
+                    .map(|i| &**i as _)
+                    .collect();
+
+                // Make the query 
+                let rows_affected = client
+                    .execute(
+                        // Fill in table name and filter
+                        format!(
+                            "DELETE FROM {} {}",
+                            #table_name,
+                            filter._stmt()
+                        ).as_str(),
+                        // Pass filter arguments
+                        args.as_slice()
+                    ).await.unwrap();
+
+                // Return the number of rows affected
+                rows_affected
+            }
         }
 
         impl #ident {
@@ -183,6 +212,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             pub async fn insert(
                 #(#insert_columns_idents: #insert_column_dtypes),*
             ) -> Result<(), pg_worm::Error> {
+                // Prepare sql statement
                 let stmt = format!(
                     "INSERT INTO {} ({}) VALUES ({})",
                     #table_name,
@@ -190,8 +220,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     #insert_columns_counter
                 );
 
+                // Retrieve the client
                 let client = pg_worm::_get_client()?;
 
+                // Execute the query
                 client.execute(
                     stmt.as_str(),
                     &[
@@ -199,6 +231,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     ]
                 ).await?;
 
+                // Everything's fine
                 Ok(())
             }
         }

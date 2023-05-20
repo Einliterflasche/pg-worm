@@ -26,13 +26,17 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     Book::insert("Foo - Part I").await?;
     Book::insert("Foo - Part II").await?;
 
-    // Query all entities from the database
+    // Query all books from the database
     let books: Vec<Book> = Book::select(Filter::all()).await;
     assert_eq!(books.len(), 2);
 
+    // Or search for a specific book
     let book = Book::select_one(Book::id.eq(2)).await;
     assert!(book.is_some());
     assert_eq!(book.unwrap().title, "Foo - Part II");
+
+    // Or delete a book, you don't like
+    Book::delete(Book::title.eq("Foo - Part II")).await;
 
     Ok(())
 }

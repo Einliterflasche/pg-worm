@@ -25,8 +25,8 @@ use pg_worm::{register, connect, NoTls, Model, Filter};
 // Postgres doesn't allow tables named `user`
 #[table(table_name = "users")]!
 struct User {
-    #[column(primary_key, auto)]
     // A primary key which automatically increments
+    #[column(primary_key, auto)]
     id: i64,
     // A column which requires unique values
     #[column(unique)]
@@ -36,13 +36,13 @@ struct User {
     password: String
 } 
 
-#[tokio::main]!
+#[tokio::main]
 async fn main() -> Result<(), pg_worm::Error> {
-    // Simply connect to your server.
+    // Simply connect to your server...
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
-    // Then, register your `Model`.
-    // This creates a new table, but be aware
+    // ...and then register your `Model`.
+    // This creates a new table. Be aware
     // that any old table with the same name 
     // will be dropped and you _will_ lose your data.
     register!(User).await?;
@@ -58,15 +58,18 @@ async fn main() -> Result<(), pg_worm::Error> {
 
     // Querying data is just as easy:
 
-    // Retrieve all entities there are...
+    // Retrieve all users there are...
     let all_users: Vec<User> = User::select(Filter::all()).await;     
     assert_eq!(all_users.len(), 2);
     
-    // Or just one...
+    // Or look for Bob...
     let bob: Option<User> = User::select_one(User::name.eq("Bob")).await;
     assert!(bob.is_some());
     assert_eq!(bob.unwrap().name, "Bob");
     
+    // Or delete Bob, since he does not actually exists
+    User::delete(User::name.eq("Bob")).await;
+
     // Graceful shutdown
     Ok(())
 }

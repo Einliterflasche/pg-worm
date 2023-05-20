@@ -121,6 +121,16 @@ pub trait Model<T>: for<'a> TryFrom<&'a Row> {
     ///  - if there is no database connection
     #[must_use]
     async fn select_one(filter: Filter) -> Option<T>;
+
+    /// Delete any entity wich matches the filter.
+    /// 
+    /// Returns the number of rows affected.
+    /// 
+    /// # Panic 
+    /// For the sake of convenience this function does not return
+    /// a `Result` but panics instead
+    ///  - if there is no database connection
+    async fn delete(filter: Filter) -> u64;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();
