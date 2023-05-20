@@ -67,8 +67,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let table_creation_sql = opts.table_creation_sql();
 
+    let impl_column_consts = opts.impl_column_consts();
+
     // Generate the needed impl code
     let output = quote!(
+        #impl_column_consts
+
         impl<'a> TryFrom<&'a pg_worm::Row> for #ident {
             type Error = pg_worm::pg::Error;
 
@@ -82,22 +86,73 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
         #[pg_worm::async_trait]
         impl Model<#ident> for #ident {
+            #[inline]
             fn _table_creation_sql() -> &'static str {
                 #table_creation_sql
             }
 
-            async fn select() -> Vec<#ident> {
-                let client = pg_worm::_get_client().expect("not connected to db");
-                let rows = client.query(format!("SELECT * FROM {}", #table_name).as_str(), &[]).await.unwrap();
-                rows.iter().map(|r| #ident::try_from(r).expect("couldn't parse data")).collect()
+            async fn select(filter: pg_worm::Filter) -> Vec<#ident> {
+                // Retrieve client. Panic if not connected
+                let client = pg_worm::_get_client()
+                    .expect("not connected to db");
+
+                // Convert args to correct datatype
+                let args: Vec<&(dyn pg_worm::pg::types::ToSql + Sync)> = filter
+                    ._args()
+                    .into_iter()
+                    .map(|i| &**i as _)
+                    .collect();
+
+                // Make the query
+                let rows = client
+                    .query(
+                        format!(
+                            "SELECT * FROM {} {}",
+                            #table_name,
+                            filter._stmt()
+                        ).as_str(),
+                        args.as_slice()
+                    ).await.unwrap();
+
+                // Parse each result to the rust type
+                rows
+                    .iter()
+                    .map(|r|
+                        #ident::try_from(r).expect("couldn't parse data")
+                    ).collect()
             }
 
-            async fn select_one() -> Option<#ident> {
-                let client = pg_worm::_get_client().expect("not connected to db");
-                let rows = client.query(format!("SELECT * FROM {} LIMIT 1", #table_name).as_str(), &[]).await.unwrap();
+            async fn select_one(filter: pg_worm::Filter) -> Option<#ident> {
+                // Retrieve client. Panic if not connected
+                let client = pg_worm::_get_client()
+                    .expect("not connected to db");
+
+                // Convert args to correct datatype
+                let args: Vec<&(dyn pg_worm::pg::types::ToSql + Sync)> = filter
+                    ._args()
+                    .into_iter()
+                    .map(|i| &**i as _)
+                    .collect();
+
+                // Make the query
+                let rows = client
+                    .query(
+                        // Fill in table name and filter
+                        format!(
+                            "SELECT * FROM {} {} LIMIT 1",
+                            #table_name,
+                            filter._stmt()
+                        ).as_str(),
+                        // Pass filter arguments
+                        args.as_slice()
+                    ).await.unwrap();
+
+                // If no entities could be fetched, return None
                 if rows.len() != 1 {
                     return None;
                 }
+
+                // Else parse and return the first entity fetched
                 Some(#ident::try_from(&rows[0]).unwrap())
             }
         }

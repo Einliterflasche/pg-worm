@@ -69,6 +69,16 @@ impl ModelInput {
                 .join(", ")
         )
     }
+
+    pub fn impl_column_consts(&self) -> TokenStream {
+        let column_consts = self.fields().map(|f| f.column_const());
+        let ident = &self.ident;
+        quote!(
+            impl #ident {
+                #(#column_consts) *
+            }
+        )
+    }
 }
 
 impl ModelField {
@@ -188,5 +198,16 @@ impl ModelField {
             return quote!(impl Into<String> + pg_worm::pg::types::ToSql + Sync);
         }
         ty
+    }
+
+    pub fn column_const(&self) -> TokenStream {
+        let name = self.column_name();
+        let ident = self.ident();
+        let rs_type = self.ty();
+
+        quote!(
+            #[allow(non_upper_case_globals)]
+            pub const #ident: pg_worm::Column<#rs_type> = pg_worm::Column::new(#name);
+        )
     }
 }

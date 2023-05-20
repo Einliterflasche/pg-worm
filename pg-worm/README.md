@@ -19,7 +19,7 @@ and you are ready to go!
 Here's a quick example: 
 
 ```rust
-use pg_worm::{register, connect, NoTls, Model};
+use pg_worm::{register, connect, NoTls, Model, Filter};
 
 #[derive(Model)]
 // Postgres doesn't allow tables named `user`
@@ -59,7 +59,7 @@ async fn main() -> Result<(), pg_worm::Error> {
     // Querying data is just as easy:
 
     // Retrieve all entities there are...
-    let all_users: Vec<User> = User::select().await;     
+    let all_users: Vec<User> = User::select(Filter::all()).await;     
     assert_eq!(all_users.len(), 2);
     
     // Or just one...
