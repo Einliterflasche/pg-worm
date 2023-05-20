@@ -168,7 +168,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     .map(|i| &**i as _)
                     .collect();
 
-                // Make the query 
+                // Make the query
                 let rows_affected = client
                     .execute(
                         // Fill in table name and filter

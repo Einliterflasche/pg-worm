@@ -74,3 +74,20 @@ async fn main() -> Result<(), pg_worm::Error> {
     Ok(())
 }
 ```
+
+## Filters
+Filters are the way to easily using `WHERE` clauses in your queries. 
+
+Unless otherwise specified they are methods on the column constants and can be called like so:
+
+```rust
+MyModel::select(MyModel::my_field.eq(5));
+```
+
+Currently the following filter functions are supported:
+
+ * `Filter::all()` - doesn't check anything
+ * `eq(val)` - checks whether the column value is equal to something
+ * `neq(val)` - checks whether the column value is not equal to something
+ * `one_of(Vec<val>)` - checks whether the column value is one of the ones specified
+ * `none_of(Vec<val>)` - checks whether the column value is not one of the ones specified

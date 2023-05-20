@@ -63,6 +63,25 @@
 //!     Ok(())
 //! }
 //! ```
+//! 
+//! 
+//! ## Filters
+//! Filters are way to easily using `WHERE` clauses in your queries. 
+//! 
+//! Unless otherwise specified they are methods on the column constants and can be called like so:
+//! 
+//! ```
+//! MyModel::select(MyModel::my_field.eq(5));
+//! ```
+//! 
+//! Currently the following filter functions are supported:
+//! 
+//!  * `Filter::all()` - doesn't check anything
+//!  * `eq(val)` - checks whether the column value is equal to something
+//!  * `neq(val)` - checks whether the column value is not equal to something
+//!  * `one_of(Vec<val>)` - checks whether the column value is one of the ones specified
+//!  * `none_of(Vec<val>)` - checks whether the column value is not one of the ones specified
+
 
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
@@ -123,10 +142,10 @@ pub trait Model<T>: for<'a> TryFrom<&'a Row> {
     async fn select_one(filter: Filter) -> Option<T>;
 
     /// Delete any entity wich matches the filter.
-    /// 
+    ///
     /// Returns the number of rows affected.
-    /// 
-    /// # Panic 
+    ///
+    /// # Panic
     /// For the sake of convenience this function does not return
     /// a `Result` but panics instead
     ///  - if there is no database connection
@@ -315,11 +334,62 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
         }
     }
 
-    pub fn eq(&self, other: impl Into<T>) -> Filter {
+    pub fn eq(&self, value: impl Into<T>) -> Filter {
         Filter::new(
             format!("WHERE {} = $1", self.name),
-            vec![Box::new(other.into())],
+            vec![Box::new(value.into())],
         )
+    }
+
+    pub fn neq(&self, value: impl Into<T>) -> Filter {
+        Filter::new(
+            format!("WHERE {} != $1", self.name),
+            vec![Box::new(value.into())],
+        )
+    }
+
+    pub fn one_of(&self, values: Vec<impl Into<T>>) -> Filter {
+        // Early return if no values are supplied
+        if values.len() == 0 {
+            return Filter::all();
+        }
+
+        // Generate the placeholders for the query
+        // like $1, $2, ...
+        let placeholders = (1..=values.len())
+            .map(|i| format!("${i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // Convert values to needed type
+        let vals = values
+            .into_iter()
+            .map(|i| Box::new(i.into()) as Box<(dyn ToSql + Send + Sync + 'static)>)
+            .collect::<Vec<_>>();
+
+        Filter::new(format!("WHERE {} IN ({placeholders})", self.name), vals)
+    }
+
+    pub fn none_of(&self, values: Vec<impl Into<T>>) -> Filter {
+        // Early return if no values are supplied
+        if values.len() == 0 {
+            return Filter::all();
+        }
+
+        // Generate the placeholders for the query
+        // like $1, $2, ...
+        let placeholders = (1..=values.len())
+            .map(|i| format!("${i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // Convert values to needed type
+        let vals = values
+            .into_iter()
+            .map(|i| Box::new(i.into()) as Box<(dyn ToSql + Send + Sync + 'static)>)
+            .collect::<Vec<_>>();
+
+        Filter::new(format!("WHERE {} NOT IN ({placeholders})", self.name), vals)
     }
 }
 
