@@ -421,14 +421,23 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
         }
     }
 
+    /// Check whether the columns value is equal to `value`.
+    /// 
+    /// Translates to `WHERE <column_name> = <value>`.
     pub fn eq(&self, value: impl Into<T>) -> Filter {
         Filter::new(format!("{} = $1", self.name), vec![Box::new(value.into())])
     }
 
+    /// Check whether the columns value is not equalt to `value`
+    /// 
+    /// Tranlates to `WHERE <column_name> != <value>`.
     pub fn neq(&self, value: impl Into<T>) -> Filter {
         Filter::new(format!("{} != $1", self.name), vec![Box::new(value.into())])
     }
 
+    /// Check whether the columns value is one of `values`.
+    /// 
+    /// Translates to `WHERE <column_name> IN <values>`
     pub fn one_of(&self, values: Vec<impl Into<T>>) -> Filter {
         // Early return if no values are supplied
         if values.is_empty() {
@@ -451,6 +460,9 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
         Filter::new(format!("{} IN ({placeholders})", self.name), vals)
     }
 
+    /// Check whether the columns value is not one of `values`.
+    /// 
+    /// Translates to `WHERE <column_name> NOT IN <values>`
     pub fn none_of(&self, values: Vec<impl Into<T>>) -> Filter {
         // Early return if no values are supplied
         if values.is_empty() {
