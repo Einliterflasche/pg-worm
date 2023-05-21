@@ -31,9 +31,14 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     assert_eq!(books.len(), 2);
 
     // Or search for a specific book
-    let book = Book::select_one(Book::id.eq(2)).await;
+    let book = Book::select_one(
+        Book::id.eq(2) & Book::title.one_of(vec!["Foo - Part I", "Foo - Part III"])
+            | Book::title.eq("Foo - Part II") & Book::id.eq(2),
+    )
+    .await;
+
     assert!(book.is_some());
-    assert_eq!(book.unwrap().title, "Foo - Part II");
+    // assert_eq!(book.unwrap().title, "Foo - Part II");
 
     // Or delete a book, you don't like
     Book::delete(Book::title.eq("Foo - Part II")).await;

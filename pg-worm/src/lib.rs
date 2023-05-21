@@ -1,11 +1,12 @@
+//! # `pg-worm`
+//! ### *P*ost*g*reSQL's *W*orst *ORM*
 //! `pg-worm` is an opiniated, straightforward, async ORM for PostgreSQL servers.
 //! Well, at least that's the goal.
 //!
 //! This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html)
 //! and is intended to be used with [`tokio`](https://tokio.rs/).
 //!
-//! # Usage
-//!
+//! ## Usage
 //! Fortunately, using this library is very easy.
 //!
 //! Just derive the `Model` trait for your type, connect to your database
@@ -17,75 +18,106 @@
 //! use pg_worm::{register, connect, NoTls, Model, Filter};
 //!
 //! #[derive(Model)]
-//! #[table(table_name = "users")]                  // Postgres doesn't allow tables named `user`
-//!                                                 // - no problem! Simply rename the table.
+//! // Postgres doesn't allow tables named `user`
+//! #[table(table_name = "users")]
 //! struct User {
-//!     #[column(primary_key, auto)]                // Set a primary key which automatically increments    
+//!     // A primary key which automatically increments
+//!     #[column(primary_key, auto)]
 //!     id: i64,
-//!     #[column(unique)]                           // Enable the uniqueness constraint
+//!     // A column which requires unique values
+//!     #[column(unique)]
 //!     name: String,
-//!     #[column(column_name = "pwd_hash")]         // You can rename columns too
+//!     // You can rename columns too
+//!     #[column(column_name = "pwd_hash")]
 //!     password: String
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), pg_worm::Error> {
-//!     // Simply connect to your server.
+//!     // Simply connect to your server...
 //!     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 //!
-//!     // Then register your `Model`.
-//!     // This creates a new table, but be aware
+//!     // ...and then register your `Model`.
+//!     // This creates a new table. Be aware
 //!     // that any old table with the same name
 //!     // will be dropped and you _will_ lose your data.
-//!     register!(User).await.unwrap();
+//!     register!(User).await?;
 //!
-//!     // Now you can start doing what you really
-//!     // want to do - after just 3 lines of setup.
+//!     // Now start doing what you actually care about.
 //!
 //!     // First, we will create some new users.
-//!     // Notice, how you can pass `&str` as well as `String`
-//!     // - convenient, isn't it?
 //!     User::insert("Bob", "very_hashed_password").await?;
-//!     User::insert("Kate".to_string(), "another_hashed_password").await?;
+//!     User::insert("Kate", "another_hashed_password").await?;
 //!
 //!     // Querying data is just as easy:
 //!
-//!     // Retrieve all entities there are...
+//!     // Retrieve all users there are...
 //!     let all_users: Vec<User> = User::select(Filter::all()).await;     
 //!     assert_eq!(all_users.len(), 2);
 //!     
-//!     // Or just one...
+//!     // Or look for Bob...
 //!     let bob: Option<User> = User::select_one(User::name.eq("Bob")).await;
 //!     assert!(bob.is_some());
 //!     assert_eq!(bob.unwrap().name, "Bob");
 //!     
+//!     // Or delete Bob, since he does not actually exists
+//!     User::delete(User::name.eq("Bob")).await;
+//!
 //!     // Graceful shutdown
 //!     Ok(())
 //! }
 //! ```
 //!
-//!
 //! ## Filters
-//! Filters are way to easily using `WHERE` clauses in your queries.
+//! Filters can be used to easily include `WHERE` clauses in your queries.
 //!
-//! Unless otherwise specified they are methods on the column constants and can be called like so:
+//! They can be constructed by calling functions of the respective column.
+//! `pg_worm` automatically constructs a `Column` constant for each field
+//! of your `Model`.
+//!
+//! A practical example would look like this:
 //!
 //! ```ignore
-//! MyModel::select(MyModel::my_field.eq(5));
+//! MyModel::select(MyModel::my_field.eq(5))
 //! ```
 //!
 //! Currently the following filter functions are supported:
 //!
 //!  * `Filter::all()` - doesn't check anything
-//!  * `eq(val)` - checks whether the column value is equal to something
-//!  * `neq(val)` - checks whether the column value is not equal to something
-//!  * `one_of(Vec<val>)` - checks whether the column value is one of the ones specified
-//!  * `none_of(Vec<val>)` - checks whether the column value is not one of the ones specified
+//!  * `eq(T)` - checks whether the column value is equal to something
+//!  * `neq(T)` - checks whether the column value is not equal to something
+//!  * `one_of(Vec<T>)` - checks whether the vector contains the column value.
+//!  * `none_of(Vec<T>)` - checks whether the vector does not contain the column value.
+//!  
+//! You can also do filter logic using `&` and `|`: `MyModel::my_field.eq(5) & MyModel::other_field.neq("Foo")`.
+//! This works as you expect logical OR and AND to work.
+//! Please notice that, at this point, custom priorization via parantheses
+//! is **not possible**.
+//!
+//! ## Opiniatedness
+//! As mentioned before, `pg_worm` is opiniated in a number of ways.
+//! These include:
+//!
+//!  * `panic`s. For the sake of convenience `pg_worm` only returns a  `Result` when
+//!    inserting data, since in that case Postgres might reject the data because of
+//!    some constraint.
+//!
+//!    This means that should something go wrong, like:
+//!     - the connection to the database collapsed,
+//!     - `pg_worm` is unable to parse Postgres' response,
+//!     - ...
+//!    the program will panic.
+//!  * ease of use. The goal of `pg_worm` is **not** to become an enterprise solution.
+//!    If adding an option means infringing the ease of use then it will likely
+//!    not be added.
 
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
 
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    ops::{BitAnd, BitOr},
+};
 
 pub use async_trait::async_trait;
 pub use pg::{NoTls, Row};
@@ -318,6 +350,61 @@ impl Filter {
     pub fn _args(&self) -> &Vec<Box<dyn ToSql + Sync + Send>> {
         &self.args
     }
+
+    fn combine_with_sep(mut f1: Filter, f2: Filter, sep: &str) -> Filter {
+        let mut left_stmt = f1.stmt + sep;
+        let mut right_stmt = f2.stmt;
+
+        while let Some(i) = right_stmt.find('$') {
+            // Compute number of digits of the current placeholder number
+            let mut digs: usize = 0usize;
+            loop {
+                let slice = &right_stmt[i + 1 + digs..];
+                if let Some(c) = slice.chars().next() {
+                    if c.is_numeric() {
+                        digs += 1;
+                        continue;
+                    }
+                }
+                break;
+            }
+
+            // Parse the number
+            let num: usize = right_stmt[i + 1..=i + digs].parse().unwrap();
+
+            // Add everything before the number to the left stmt
+            // assert!(curr <= i, "!{curr} <= {i}");
+            left_stmt.push_str(&right_stmt[..=i]);
+            // Add the new number to the left statement
+            left_stmt.push_str(&format!("{}", num + f1.args.len()));
+            // Repeat for the rest of the placeholders
+            let new_start = i + digs + 1;
+            right_stmt = right_stmt[new_start..].to_string();
+        }
+
+        // Add rest if the string
+        left_stmt += &right_stmt;
+
+        f1.args.extend(f2.args);
+
+        Filter::new(left_stmt, f1.args)
+    }
+}
+
+impl BitAnd for Filter {
+    type Output = Filter;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Filter::combine_with_sep(self, rhs, " AND ")
+    }
+}
+
+impl BitOr for Filter {
+    type Output = Filter;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Filter::combine_with_sep(self, rhs, " OR ")
+    }
 }
 
 pub struct Column<T: ToSql + Sync> {
@@ -334,17 +421,11 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
     }
 
     pub fn eq(&self, value: impl Into<T>) -> Filter {
-        Filter::new(
-            format!("WHERE {} = $1", self.name),
-            vec![Box::new(value.into())],
-        )
+        Filter::new(format!("{} = $1", self.name), vec![Box::new(value.into())])
     }
 
     pub fn neq(&self, value: impl Into<T>) -> Filter {
-        Filter::new(
-            format!("WHERE {} != $1", self.name),
-            vec![Box::new(value.into())],
-        )
+        Filter::new(format!("{} != $1", self.name), vec![Box::new(value.into())])
     }
 
     pub fn one_of(&self, values: Vec<impl Into<T>>) -> Filter {
@@ -366,7 +447,7 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
             .map(|i| Box::new(i.into()) as Box<(dyn ToSql + Send + Sync + 'static)>)
             .collect::<Vec<_>>();
 
-        Filter::new(format!("WHERE {} IN ({placeholders})", self.name), vals)
+        Filter::new(format!("{} IN ({placeholders})", self.name), vals)
     }
 
     pub fn none_of(&self, values: Vec<impl Into<T>>) -> Filter {
@@ -388,7 +469,7 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
             .map(|i| Box::new(i.into()) as Box<(dyn ToSql + Send + Sync + 'static)>)
             .collect::<Vec<_>>();
 
-        Filter::new(format!("WHERE {} NOT IN ({placeholders})", self.name), vals)
+        Filter::new(format!("{} NOT IN ({placeholders})", self.name), vals)
     }
 }
 
@@ -407,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_create_table() {
+    fn table_creation_sql() {
         assert_eq!(
             Person::_table_creation_sql(),
             "DROP TABLE IF EXISTS personas CASCADE; CREATE TABLE personas (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text)"

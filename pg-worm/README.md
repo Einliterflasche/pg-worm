@@ -2,7 +2,6 @@
 
 # `pg-worm`
 ### *P*ost*g*reSQL's *W*orst *ORM*
-
 `pg-worm` is an opiniated, straightforward, async ORM for PostgreSQL servers.
 Well, at least that's the goal. 
 
@@ -10,7 +9,6 @@ This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8
 and is intended to be used with [`tokio`](https://tokio.rs/).
 
 ## Usage
-
 Fortunately, using this library is very easy.
 
 Just derive the `Model` trait for your type, connect to your database 
@@ -23,7 +21,7 @@ use pg_worm::{register, connect, NoTls, Model, Filter};
 
 #[derive(Model)]
 // Postgres doesn't allow tables named `user`
-#[table(table_name = "users")]!
+#[table(table_name = "users")]
 struct User {
     // A primary key which automatically increments
     #[column(primary_key, auto)]
@@ -47,14 +45,11 @@ async fn main() -> Result<(), pg_worm::Error> {
     // will be dropped and you _will_ lose your data.
     register!(User).await?;
 
-    // Now you can start doing what you really
-    // want to do - after just 3 lines of setup.!
+    // Now start doing what you actually care about.
 
     // First, we will create some new users.
-    // Notice, how you can pass `&str` as well as `String` 
-    // - convenient, isn't it?
     User::insert("Bob", "very_hashed_password").await?;
-    User::insert("Kate".to_string(), "another_hashed_password").await?;
+    User::insert("Kate", "another_hashed_password").await?;
 
     // Querying data is just as easy:
 
@@ -64,10 +59,10 @@ async fn main() -> Result<(), pg_worm::Error> {
     
     // Or look for Bob...
     let bob: Option<User> = User::select_one(User::name.eq("Bob")).await;
-    assert!(bob.is_some());
+    assert!(bob.is_some()); // Found him
     assert_eq!(bob.unwrap().name, "Bob");
     
-    // Or delete Bob, since he does not actually exists
+    // Or delete Bob
     User::delete(User::name.eq("Bob")).await;
 
     // Graceful shutdown
@@ -76,18 +71,44 @@ async fn main() -> Result<(), pg_worm::Error> {
 ```
 
 ## Filters
-Filters are the way to easily using `WHERE` clauses in your queries. 
+Filters can be used to easily include `WHERE` clauses in your queries. 
 
-Unless otherwise specified they are methods on the column constants and can be called like so:
+They can be constructed by calling functions of the respective column. 
+`pg_worm` automatically constructs a `Column` constant for each field 
+of your `Model`. 
+
+A practical example would look like this:
 
 ```rust
-MyModel::select(MyModel::my_field.eq(5));
+MyModel::select(MyModel::my_field.eq(5))
 ```
 
 Currently the following filter functions are supported:
 
  * `Filter::all()` - doesn't check anything
- * `eq(val)` - checks whether the column value is equal to something
- * `neq(val)` - checks whether the column value is not equal to something
- * `one_of(Vec<val>)` - checks whether the column value is one of the ones specified
- * `none_of(Vec<val>)` - checks whether the column value is not one of the ones specified
+ * `eq(T)` - checks whether the column value is equal to something
+ * `neq(T)` - checks whether the column value is not equal to something
+ * `one_of(Vec<T>)` - checks whether the vector contains the column value.
+ * `none_of(Vec<T>)` - checks whether the vector does not contain the column value.
+ 
+You can also do filter logic using `&` and `|`: `MyModel::my_field.eq(5) & MyModel::other_field.neq("Foo")`.
+This works as you expect logical OR and AND to work.
+Please notice that, at this point, custom priorization via parantheses 
+is **not possible**.
+
+## Opiniatedness
+As mentioned before, `pg_worm` is opiniated in a number of ways. 
+These include:
+
+ * `panic`s. For the sake of convenience `pg_worm` only returns a  `Result` when 
+   inserting data, since in that case Postgres might reject the data because of
+   some constraint. 
+
+   This means that should something go wrong, like:
+    - the connection to the database collapsed,
+    - `pg_worm` is unable to parse Postgres' response,
+    - ...
+   the program will panic.
+ * ease of use. The goal of `pg_worm` is **not** to become an enterprise solution.
+   If adding an option means infringing the ease of use then it will likely
+   not be added.

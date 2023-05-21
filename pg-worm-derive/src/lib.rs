@@ -79,7 +79,15 @@ pub fn derive(input: TokenStream) -> TokenStream {
             fn try_from(value: &'a pg_worm::Row) -> Result<#ident, Self::Error> {
                 // Parse each column into the corresponding field
                 Ok(#ident {
-                    #(#field_idents: value.try_get(#column_names).expect("asdasd")),*
+                    #(#field_idents: value
+                        .try_get(#column_names)
+                        .expect(
+                            format!(
+                                "couldn't parse {} from postgres value",
+                                stringify!(#field_idents)
+                            ).as_str()
+                        )
+                    ),*
                 })
             }
         }
@@ -109,7 +117,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
                         format!(
                             "SELECT * FROM {} {}",
                             #table_name,
-                            filter._stmt()
+                            if filter._stmt().is_empty() { "".to_string() }
+                            else { format!("WHERE {}", filter._stmt()) }
                         ).as_str(),
                         args.as_slice()
                     ).await.unwrap();
@@ -141,7 +150,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
                         format!(
                             "SELECT * FROM {} {} LIMIT 1",
                             #table_name,
-                            filter._stmt()
+                            if filter._stmt().is_empty() { "".to_string() }
+                            else { format!("WHERE {}", filter._stmt()) }
                         ).as_str(),
                         // Pass filter arguments
                         args.as_slice()
@@ -175,7 +185,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
                         format!(
                             "DELETE FROM {} {}",
                             #table_name,
-                            filter._stmt()
+                            if filter._stmt().is_empty() { "".to_string() }
+                            else { format!("WHERE {}", filter._stmt()) }
                         ).as_str(),
                         // Pass filter arguments
                         args.as_slice()
