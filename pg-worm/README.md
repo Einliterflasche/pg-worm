@@ -108,7 +108,7 @@ These include:
     - the connection to the database collapsed,
     - `pg_worm` is unable to parse Postgres' response,
     - ...
-    - 
+   
    the program will panic.
  * ease of use. The goal of `pg_worm` is **not** to become an enterprise solution.
    If adding an option means infringing the ease of use then it will likely
