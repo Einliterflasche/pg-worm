@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
-use darling::{ast::Data, FromDeriveInput, FromField, FromMeta, export::NestedMeta};
+use darling::{ast::Data, FromDeriveInput, FromField};
 use postgres_types::Type;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Ident, Path, Meta};
+use syn::Ident;
 
 #[derive(FromDeriveInput)]
 #[darling(attributes(table), supports(struct_named))]
@@ -26,14 +24,7 @@ pub struct ModelField {
     #[darling(default)]
     primary_key: bool,
     #[darling(default)]
-    unique: bool,
-    #[darling(default)]
-    references: ReferencesInput
-}
-
-#[derive(Clone, Default)]
-pub struct ReferencesInput {
-    paths: Vec<Path>
+    unique: bool
 }
 
 impl ModelInput {
@@ -80,7 +71,8 @@ impl ModelInput {
     }
 
     pub fn impl_column_consts(&self) -> TokenStream {
-        let column_consts = self.fields().map(|f| f.column_const());
+        let column_consts = self.fields()
+            .map(|f| f.column_const(self));
         let ident = &self.ident;
         quote!(
             impl #ident {
@@ -92,7 +84,8 @@ impl ModelInput {
     pub fn impl_insert(&self) -> TokenStream {
         let table_name = self.table_name();
 
-        let column_names = self.insert_fields()
+        let column_names = self
+            .insert_fields()
             .map(|f| f.column_name())
             .collect::<Vec<_>>()
             .join(", ");
@@ -102,13 +95,13 @@ impl ModelInput {
             .collect::<Vec<_>>()
             .join(", ");
 
-        let column_idents = self.insert_fields()
-            .map(|f| f.ident())
-            .collect::<Vec<_>>();
-        let column_dtypes = self.insert_fields()
+        let column_idents = self.insert_fields().map(|f| f.ident()).collect::<Vec<_>>();
+        let column_concrete_types = self.insert_fields().map(|f| f.ty().to_token_stream());
+        let column_dtypes = self
+            .insert_fields()
             .map(|f| f.insert_arg_type())
             .collect::<Vec<_>>();
-        
+
         quote!(
             /// Insert a new entity into the database.
             ///
@@ -143,6 +136,10 @@ impl ModelInput {
                     #column_counter
                 );
 
+                #(
+                    let #column_idents: #column_concrete_types = #column_idents.into();
+                ) *
+
                 // Retrieve the client
                 let client = pg_worm::_get_client()?;
 
@@ -150,7 +147,7 @@ impl ModelInput {
                 client.execute(
                     stmt.as_str(),
                     &[
-                        #(&#column_idents), *
+                        #(&#column_idents),*
                     ]
                 ).await?;
 
@@ -158,14 +155,6 @@ impl ModelInput {
                 Ok(())
             }
         )
-    }
-
-    pub fn references(&self) -> HashMap<String, Vec<Path>> {
-        let refs: HashMap<String, Vec<Path>> = self.fields().map(|f|
-            (f.column_name(), f.references().clone())
-        ).collect();
-
-        refs
     }
 }
 
@@ -232,7 +221,7 @@ impl ModelField {
                         "f64" => Type::FLOAT8,
                         "bool" => Type::BOOL,
                         _ => todo!(
-                            "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = 'DataType']`", 
+                            "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = '<DataType>']`", 
                             self.ident().to_string()
                         )
                     },
@@ -282,46 +271,18 @@ impl ModelField {
 
     pub fn insert_arg_type(&self) -> TokenStream {
         let ty = self.ty().to_token_stream();
-        if ty.to_string() == "String" {
-            return quote!(impl Into<String> + pg_worm::pg::types::ToSql + Sync);
-        }
-        ty
+        quote!(impl Into<#ty> + pg_worm::pg::types::ToSql + Sync)
     }
 
-    pub fn column_const(&self) -> TokenStream {
-        let name = self.column_name();
+    pub fn column_const(&self, table: &ModelInput) -> TokenStream {
+        let table_name = table.table_name();
+        let col_name = self.column_name();
         let ident = self.ident();
         let rs_type = self.ty();
 
         quote!(
             #[allow(non_upper_case_globals)]
-            pub const #ident: pg_worm::Column<#rs_type> = pg_worm::Column::new(#name);
+            pub const #ident: pg_worm::Column<#rs_type> = pg_worm::Column::new(#table_name, #col_name);
         )
-    }
-
-    pub fn references(&self) -> &Vec<Path> {
-        &self.references.paths
-    }
-}
-
-impl FromMeta for ReferencesInput {
-    fn from_list(items: &[NestedMeta]) -> Result<Self, darling::Error> {
-        let mut paths: Vec<Path> = Vec::new();
-
-        for i in items {
-            match i {
-                NestedMeta::Meta(meta) => match meta {
-                    Meta::Path(path) => { 
-                        paths.push(path.clone());
-                        continue;
-                    },
-                    _ => (),
-                },
-                _ => ()
-            }
-            return Err(darling::Error::unsupported_shape("references should be a list of columns"))
-        }
-
-        Ok(ReferencesInput { paths })
     }
 }

@@ -33,20 +33,18 @@ pub fn derive(input: TokenStream) -> TokenStream {
         panic!("struct must have at least one field to become a `Model`")
     }
 
-    let refs = opts.references();
-
     // Get the fields' idents
     let field_idents = fields
         .clone()
         .into_iter()
-        .map(|f| f.clone().ident())
+        .map(|f| f.ident())
         .collect::<Vec<_>>();
     let column_names = fields.iter().map(|f| f.column_name()).collect::<Vec<_>>();
 
     let impl_insert = opts.impl_insert();
 
     let table_creation_sql = opts.table_creation_sql();
-   
+
     let impl_column_consts = opts.impl_column_consts();
 
     // Generate the needed impl code

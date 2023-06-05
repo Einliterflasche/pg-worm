@@ -1,4 +1,4 @@
-use pg_worm::{connect, register, Filter, Model, NoTls};
+use pg_worm::{connect, register, Filter, Model, NoTls, Query};
 
 #[derive(Model)]
 struct Book {
@@ -6,15 +6,14 @@ struct Book {
     id: i64,
     #[column(unique)]
     title: String,
-    #[column(references(Author::id))]
-    author: i64
+    author_id: i64,
 }
 
 #[derive(Model)]
 struct Author {
     #[column(primary_key, auto)]
     id: i64,
-    name: String
+    name: String,
 }
 
 #[tokio::test]
@@ -48,6 +47,8 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
 
     assert!(book.is_some());
     // assert_eq!(book.unwrap().title, "Foo - Part II");
+
+    Query::select([&Book::id, &Book::title]).filter(Book::id.eq(1));
 
     // Or delete a book, you don't like
     Book::delete(Book::title.eq("Foo - Part II")).await;

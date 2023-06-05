@@ -113,3 +113,6 @@ These include:
  * ease of use. The goal of `pg_worm` is **not** to become an enterprise solution.
    If adding an option means infringing the ease of use then it will likely
    not be added.
+
+## License
+This project is dual-licensed under the MIT and Apache 2.0 licenses.
