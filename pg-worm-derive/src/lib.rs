@@ -33,6 +33,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
         panic!("struct must have at least one field to become a `Model`")
     }
 
+    let n_fields = opts.n_fields();
+
     // Get the fields' idents
     let field_idents = fields
         .clone()
@@ -77,71 +79,47 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 #table_creation_sql
             }
 
+            fn columns() -> &'static [&'static pg_worm::DynCol] {
+                &#ident::COLUMNS
+            }
+
             async fn select(filter: pg_worm::Filter) -> Vec<#ident> {
-                // Retrieve client. Panic if not connected
-                let client = pg_worm::_get_client()
-                    .expect("not connected to db");
+                use pg_worm::QueryBuilder;
 
-                // Convert args to correct datatype
-                let args: Vec<&(dyn pg_worm::pg::types::ToSql + Sync)> = filter
-                    ._args()
-                    .into_iter()
-                    .map(|i| &**i as _)
-                    .collect();
+                let query = pg_worm::Query::select(#ident::COLUMNS)
+                    .filter(filter)
+                    .build();
 
-                // Make the query
-                let rows = client
-                    .query(
-                        format!(
-                            "SELECT * FROM {} {}",
-                            #table_name,
-                            if filter._stmt().is_empty() { "".to_string() }
-                            else { format!("WHERE {}", filter._stmt()) }
-                        ).as_str(),
-                        args.as_slice()
-                    ).await.unwrap();
+                let rows = query
+                    .exec()
+                    .await
+                    .expect("failed to query");
 
-                // Parse each result to the rust type
                 rows
                     .iter()
-                    .map(|r|
-                        #ident::try_from(r).expect("couldn't parse data")
-                    ).collect()
+                    .map(|i| #ident::try_from(i).unwrap())
+                    .collect()
             }
 
             async fn select_one(filter: pg_worm::Filter) -> Option<#ident> {
-                // Retrieve client. Panic if not connected
-                let client = pg_worm::_get_client()
-                    .expect("not connected to db");
+                use pg_worm::QueryBuilder;
 
-                // Convert args to correct datatype
-                let args: Vec<&(dyn pg_worm::pg::types::ToSql + Sync)> = filter
-                    ._args()
-                    .into_iter()
-                    .map(|i| &**i as _)
-                    .collect();
+                let query = pg_worm::Query::select(#ident::COLUMNS)
+                    .filter(filter)
+                    .build();
 
-                // Make the query
-                let rows = client
-                    .query(
-                        // Fill in table name and filter
-                        format!(
-                            "SELECT * FROM {} {} LIMIT 1",
-                            #table_name,
-                            if filter._stmt().is_empty() { "".to_string() }
-                            else { format!("WHERE {}", filter._stmt()) }
-                        ).as_str(),
-                        // Pass filter arguments
-                        args.as_slice()
-                    ).await.unwrap();
+                let rows = query
+                    .exec()
+                    .await
+                    .expect("failed to query");
 
-                // If no entities could be fetched, return None
-                if rows.len() != 1 {
-                    return None;
-                }
+                if let Some(row) = rows.first() {
+                    return Some(
+                        #ident::try_from(row).expect("could not parse model from row")
+                    );
+                } 
 
-                // Else parse and return the first entity fetched
-                Some(#ident::try_from(&rows[0]).unwrap())
+                None
             }
 
             async fn delete(filter: pg_worm::Filter) -> u64 {
@@ -177,6 +155,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
         impl #ident {
             #impl_insert
+
+            const COLUMNS: [&'static pg_worm::DynCol; #n_fields] = [
+                #(
+                    &#ident::#field_idents
+                ),*
+            ];
         }
     );
 

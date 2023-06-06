@@ -1,4 +1,4 @@
-use pg_worm::{connect, register, Filter, Model, NoTls, Query};
+use pg_worm::{connect, register, Filter, Model, NoTls, Query, QueryBuilder};
 
 #[derive(Model)]
 struct Book {
@@ -16,6 +16,17 @@ struct Author {
     name: String,
 }
 
+async fn get_authors() -> Vec<Author> {
+    let rows = Query::select(Author::COLUMNS)
+        .filter(Author::id.eq(1))
+        .build()
+        .exec().await.expect("err executing");
+
+    rows.iter()
+        .map(|i| Author::try_from(i).expect("err fromming"))
+        .collect::<Vec<_>>()
+}
+
 #[tokio::test]
 async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done _once_.
@@ -26,7 +37,8 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // This creates a completely new table.
     // Beware that should there already be a table
     // with the same name, it is dropped.
-    register!(Book).await?;
+    register!(Author).await?;
+    register!(Book).await?;    
 
     // Next, insert a new book.
     // This works by passing values for all
@@ -34,21 +46,18 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     Book::insert("Foo - Part I", 1).await?;
     Book::insert("Foo - Part II", 1).await?;
 
-    // Query all books from the database
+    Author::insert("Marx").await?;
+
+    let authors = get_authors().await;
+    assert_eq!(authors.len(), 1);
+    assert_eq!(authors[0].name, "Marx");
+
     let books: Vec<Book> = Book::select(Filter::all()).await;
     assert_eq!(books.len(), 2);
 
     // Or search for a specific book
-    let book = Book::select_one(
-        Book::id.eq(2) & Book::title.one_of(vec!["Foo - Part I", "Foo - Part III"])
-            | Book::title.eq("Foo - Part II") & Book::id.eq(2),
-    )
-    .await;
-
+    let book = Book::select_one(Book::title.like("Foo%II")).await;
     assert!(book.is_some());
-    // assert_eq!(book.unwrap().title, "Foo - Part II");
-
-    Query::select([&Book::id, &Book::title]).filter(Book::id.eq(1));
 
     // Or delete a book, you don't like
     Book::delete(Book::title.eq("Foo - Part II")).await;

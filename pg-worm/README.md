@@ -87,11 +87,10 @@ Currently the following filter functions are supported:
 
  * `Filter::all()` - doesn't check anything
  * `eq(T)` - checks whether the column value is equal to something
- * `neq(T)` - checks whether the column value is not equal to something
- * `one_of(Vec<T>)` - checks whether the vector contains the column value.
- * `none_of(Vec<T>)` - checks whether the vector does not contain the column value.
+ * `one_of(Vec<T>)` - checks whether the vector contains the column value
+ * `like(String)` - 
  
-You can also do filter logic using `&` and `|`: `MyModel::my_field.eq(5) & MyModel::other_field.neq("Foo")`.
+You can also do filter logic using `!`, `&` and `|`: `MyModel::my_field.eq(5) & !MyModel::other_field.eq("Foo")`.
 This works as you expect logical OR and AND to work.
 Please notice that, at this point, custom priorization via parantheses 
 is **not possible**.

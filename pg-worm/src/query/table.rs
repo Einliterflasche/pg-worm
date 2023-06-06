@@ -4,37 +4,73 @@ use tokio_postgres::types::ToSql;
 
 use crate::Filter;
 
-pub struct Column<T: ToSql + Sync> {
-    shared: ColumnShared,
+pub struct Table {
+    table_name: &'static str
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TypedColumn<T: ToSql + Sync> {
+    pub column: Column,
     rs_type: PhantomData<T>,
 }
 
-#[derive(Copy, Clone)]
-pub struct ColumnShared {
+#[derive(Copy, Clone, Debug)]
+pub struct Column {
     column_name: &'static str,
     table_name: &'static str,
+    nullable: bool,
+    unique: bool,
+    primary_key: bool,
+    generated: bool
 }
 
-impl<T: ToSql + Sync + Send + 'static> Column<T> {
-    pub const fn new(table_name: &'static str, column_name: &'static str) -> Column<T> {
-        Column {
-            shared: ColumnShared {
-                table_name,
-                column_name,
-            },
+macro_rules! impl_prop_typed_col {
+    ($($prop:ident),+) => {
+        $(
+            pub const fn $prop(mut self) -> TypedColumn<T> {
+                self.column.$prop = true;
+                self
+            }
+        )*
+    };
+}
+
+macro_rules! impl_prop_col {
+    ($($prop:ident),+) => {
+        $(
+            pub const fn $prop(&self) -> bool {
+                self.$prop
+            }
+        )*
+    };
+}
+
+impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
+    pub const fn new(table_name: &'static str, column_name: &'static str) -> TypedColumn<T> {
+        TypedColumn {
+            column: Column::new(table_name, column_name),
             rs_type: PhantomData::<T>,
         }
     }
 
+    /// Get the column's name
     pub const fn name(&self) -> &'static str {
-        self.shared.column_name
+        self.column.column_name
     }
+
+    /// Get the column object.
+    pub const fn col(&self) -> &Column {
+        &self.column
+    }
+
+    impl_prop_typed_col!(nullable, unique, primary_key, generated);
+
     /// Check whether the columns value is equal to `value`.
     ///
     /// Translates to `WHERE <column_name> = <value>`.
     pub fn eq(&self, value: impl Into<T>) -> Filter {
         Filter::new(
-            format!("{} = $1", self.shared.column_name),
+            format!("{} = $1", self.column.full_name()),
             vec![Box::new(value.into())],
         )
     }
@@ -62,30 +98,75 @@ impl<T: ToSql + Sync + Send + 'static> Column<T> {
             .collect::<Vec<_>>();
 
         Filter::new(
-            format!("{} IN ({placeholders})", self.shared.column_name),
+            format!("{} IN ({placeholders})", self.column.full_name()),
             vals,
         )
     }
 
     pub fn is_null(&self) -> Filter {
-        Filter::new(format!("{} IS NULL", self.shared.column_name), Vec::new())
+        Filter::new(format!("{} IS NULL", self.column.full_name()), Vec::new())
     }
 }
 
-impl<T: ToSql + Sync> Deref for Column<T> {
-    type Target = ColumnShared;
+impl TypedColumn<String> {
+    /// Query for values which are `LIKE val`.
+    pub fn like(&self, val: impl Into<String>) -> Filter {
+        let val: String = val.into();
+
+        Filter::new(
+            format!("{} LIKE $1", self.full_name()),
+            vec![Box::new(val)]
+        )
+    }
+}
+
+impl<T: ToSql + Sync> Deref for TypedColumn<T> {
+    type Target = Column;
 
     fn deref(&self) -> &Self::Target {
-        &self.shared
+        &self.column
     }
 }
 
-impl ColumnShared {
+impl Column {
+    pub const fn new(table_name: &'static str, column_name: &'static str) -> Column {
+        Column { 
+            column_name, 
+            table_name,
+            nullable: false,
+            unique: false,
+            primary_key: false,
+            generated: false
+        }
+    }
+
+    impl_prop_col!(unique, nullable, primary_key, generated);
+
+    /// Get the column name.
     pub const fn column_name(&self) -> &'static str {
         self.column_name
     }
 
+    /// Get the name of the table this column
+    /// is part of.
     pub const fn table_name(&self) -> &'static str {
         self.table_name
+    }
+
+    /// Get the full name of the column.
+    /// 
+    /// # Example
+    /// 
+    /// ```ignore
+    /// let c = Column::new("my_table", "my_col");
+    /// assert_eq!(c.full_name(), "my_table.my_col");
+    /// ```
+    #[inline]
+    pub fn full_name(&self) -> String {
+        format!(
+            "{}.{}",
+            self.table_name,
+            self.column_name
+        )
     }
 }

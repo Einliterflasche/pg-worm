@@ -123,7 +123,7 @@ pub use pg_worm_derive::Model;
 /// This crate's reexport of the `tokio_postgres` crate.
 pub use tokio_postgres as pg;
 
-pub use query::{Column, ColumnShared, Filter, Query, Join, JoinType};
+pub use query::*;
 
 use once_cell::sync::OnceCell;
 use pg::{tls::MakeTlsConnect, Client, Connection, Socket};
@@ -152,6 +152,8 @@ pub trait Model<T>: for<'a> TryFrom<&'a Row> {
     /// *_DO NOT USE_*
     #[must_use]
     fn _table_creation_sql() -> &'static str;
+
+    fn columns() -> &'static [&'static DynCol];
 
     /// Retrieve all entities from the table.
     ///
@@ -318,6 +320,8 @@ mod tests {
     
     use pg_worm::{Model, Join, JoinType};
 
+    use crate::{Query, query::QueryBuilder};
+
     #[derive(Model)]
     #[table(table_name = "persons")]
     struct Person {
@@ -339,6 +343,19 @@ mod tests {
         assert_eq!(
             Join::new(&Book::author_id, &Person::id, JoinType::Inner).to_sql(),
             "INNER JOIN persons ON book.author_id = persons.id"
+        )
+    }
+
+    #[test]
+    fn select_sql() {
+        let q = Query::select([&Book::title])
+            .filter(Person::id.eq(5))
+            .join(&Book::author_id, &Person::id, JoinType::Inner)
+            .build();
+
+        assert_eq!(
+            q.stmt(),
+            "SELECT book.title FROM book INNER JOIN persons ON book.author_id = persons.id WHERE persons.id = $1"
         )
     }
 

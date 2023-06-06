@@ -115,9 +115,8 @@ impl ModelInput {
             ///
             /// #[derive(Model)]
             /// struct Book {
-            ///     #[column(dtype = "BIGSERIAL")]
+            ///     #[column(primary_key, auto)]
             ///     id: i64,
-            ///     #[column(dtype = "TEXT")]
             ///     title: String
             /// }
             ///
@@ -216,6 +215,7 @@ impl ModelField {
                     .first().unwrap()
                     .ident.to_string().as_str() {
                         "String" => Type::TEXT,
+                        "i32" => Type::INT4,
                         "i64" => Type::INT8,
                         "f32" => Type::FLOAT4,
                         "f64" => Type::FLOAT8,
@@ -280,9 +280,25 @@ impl ModelField {
         let ident = self.ident();
         let rs_type = self.ty();
 
+        let mut props = Vec::new();
+
+        macro_rules! prop {
+            ($cond:expr, $id:ident) => {
+                if $cond {
+                    props.push(quote!(.$id()));
+                }
+            };
+        }
+
+        prop!(self.auto_generated(), generated);
+        prop!(self.unique, unique);
+        prop!(self.primary_key, primary_key);
+        prop!(false, nullable);
+
         quote!(
             #[allow(non_upper_case_globals)]
-            pub const #ident: pg_worm::Column<#rs_type> = pg_worm::Column::new(#table_name, #col_name);
+            pub const #ident: pg_worm::TypedColumn<#rs_type> = pg_worm::TypedColumn::new(#table_name, #col_name)
+                #(#props)*;
         )
     }
 }

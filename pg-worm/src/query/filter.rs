@@ -41,13 +41,18 @@ impl Filter {
         &self.args
     }
 
+    #[inline]
+    pub fn args(self) -> Vec<Box<dyn ToSql + Sync + Send>> {
+        self.args
+    }
+
     fn combine_with_sep(mut f1: Filter, f2: Filter, sep: &str) -> Filter {
         if f1._stmt().trim().is_empty() {
-            return f1;
+            return f2;
         }
 
         if f2._stmt().trim().is_empty() {
-            return f2;
+            return f1;
         }
 
         let mut left_stmt = f1.stmt + sep;
@@ -86,6 +91,15 @@ impl Filter {
         f1.args.extend(f2.args);
 
         Filter::new(left_stmt, f1.args)
+    }
+
+    #[inline]
+    pub fn to_sql(&self) -> String {
+        if self.stmt.trim().is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", self.stmt)
+        }
     }
 }
 
