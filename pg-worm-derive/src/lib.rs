@@ -54,19 +54,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
         #impl_column_consts
 
         impl<'a> TryFrom<&'a pg_worm::Row> for #ident {
-            type Error = pg_worm::pg::Error;
+            type Error = pg_worm::Error;
 
             fn try_from(value: &'a pg_worm::Row) -> Result<#ident, Self::Error> {
                 // Parse each column into the corresponding field
                 Ok(#ident {
                     #(#field_idents: value
-                        .try_get(#column_names)
-                        .expect(
-                            format!(
-                                "couldn't parse {} from postgres value",
-                                stringify!(#field_idents)
-                            ).as_str()
-                        )
+                        .try_get(#column_names)?
                     ),*
                 })
             }
@@ -90,15 +84,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     .filter(filter)
                     .build();
 
-                let rows = query
+                let res: Vec<#ident> = query
                     .exec()
                     .await
                     .expect("failed to query");
 
-                rows
-                    .iter()
-                    .map(|i| #ident::try_from(i).unwrap())
-                    .collect()
+                res
             }
 
             async fn select_one(filter: pg_worm::Filter) -> Option<#ident> {
@@ -108,18 +99,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     .filter(filter)
                     .build();
 
-                let rows = query
+                let res: Vec<#ident> = query
                     .exec()
                     .await
                     .expect("failed to query");
 
-                if let Some(row) = rows.first() {
-                    return Some(
-                        #ident::try_from(row).expect("could not parse model from row")
-                    );
-                }
-
-                None
+                res.into_iter().next()
             }
 
             async fn delete(filter: pg_worm::Filter) -> u64 {

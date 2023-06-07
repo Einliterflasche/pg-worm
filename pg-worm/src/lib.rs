@@ -146,7 +146,7 @@ pub enum Error {
 /// It provides the ORM functionality.
 ///
 #[async_trait]
-pub trait Model<T>: for<'a> TryFrom<&'a Row> {
+pub trait Model<T>: for<'a> TryFrom<&'a Row, Error = Error> {
     /// This is a library function needed to derive the `Model`trait.
     ///
     /// *_DO NOT USE_*
@@ -270,7 +270,10 @@ macro_rules! connect {
 ///     pg_worm::register_model::<M>().await?;
 /// }
 /// ```
-pub async fn register_model<M: Model<M>>() -> Result<(), Error> {
+pub async fn register_model<M: Model<M>>() -> Result<(), Error>
+where
+    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>
+{
     let client = _get_client()?;
     client.batch_execute(M::_table_creation_sql()).await?;
 
@@ -279,7 +282,10 @@ pub async fn register_model<M: Model<M>>() -> Result<(), Error> {
 
 /// Same as `register_model` but if a table with the same name
 /// already exists, it is dropped instead of returning an error.
-pub async fn force_register_model<M: Model<M>>() -> Result<(), Error> {
+pub async fn force_register_model<M: Model<M>>() -> Result<(), Error>
+where
+    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>
+{
     let client = _get_client()?;
     let query = format!(
         "DROP TABLE IF EXISTS {} CASCADE; ",
@@ -342,7 +348,7 @@ mod tests {
 
     use pg_worm::{Join, JoinType, Model, Query, QueryBuilder};
 
-    use crate::ToQuery;
+    use crate::{ToQuery, Filter};
 
     #[derive(Model)]
     #[table(table_name = "persons")]
@@ -358,6 +364,11 @@ mod tests {
         id: i64,
         title: String,
         author_id: i64,
+    }
+
+    #[test]
+    fn table_name() {
+        assert_eq!(Book::COLUMNS[0].table_name(), "book");
     }
 
     #[test]
@@ -388,5 +399,35 @@ mod tests {
             Person::_table_creation_sql(),
             "CREATE TABLE persons (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text)"
         );
+    }
+
+    #[test]
+    fn limit_to_query() {
+        let limit = Some(4usize);
+        assert_eq!(limit.to_sql(), "LIMIT 4");
+    }
+
+    #[test]
+    fn empty_limit_tp_query() {
+        let limit: Option<usize> = None;
+        assert_eq!(limit.to_sql(), "");
+    }
+
+    #[test]
+    fn empty_filter_to_query() {
+        let filter = Filter::all();
+        assert_eq!(filter.to_sql(), "");
+    }
+
+    #[test]
+    fn eq_filter_to_query() {
+        let filter = Book::id.eq(5);
+        assert_eq!(filter.to_sql(), "WHERE book.id = $1");
+    }
+
+    #[test]
+    fn filter_and() {
+        let filter = Book::id.eq(4) & Book::id.eq(5);
+        assert_eq!(filter.to_sql(), "WHERE book.id = $1 AND book.id = $2");
     }
 }

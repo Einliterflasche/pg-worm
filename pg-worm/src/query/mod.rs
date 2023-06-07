@@ -8,11 +8,11 @@ pub use table::{Column, TypedColumn};
 
 pub type DynCol = dyn Deref<Target = Column>;
 
-use tokio_postgres::{types::ToSql, Row};
+use tokio_postgres::types::ToSql;
 
 use std::ops::Deref;
 
-use crate::_get_client;
+use crate::{_get_client, Model, Error};
 
 pub struct Query {
     stmt: String,
@@ -54,9 +54,9 @@ impl Query {
     }
 
     /// Execute a query.
-    pub async fn exec(&self) -> Result<Vec<Row>, pg_worm::Error> {
+    pub async fn exec<M: Model<M>>(&self) -> Result<Vec<M>, pg_worm::Error> {
         let client = _get_client()?;
-        Ok(client
+        let rows = client
             .query(
                 &self.stmt,
                 self.args
@@ -65,7 +65,14 @@ impl Query {
                     .collect::<Vec<_>>()
                     .as_slice(),
             )
-            .await?)
+            .await?;
+
+        let res = rows
+            .iter()
+            .map(|i| M::try_from(i))
+            .collect::<Result<Vec<M>, Error>>()?;
+
+        Ok(res)
     }
 }
 
