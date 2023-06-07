@@ -3,7 +3,7 @@
 # `pg-worm`
 ### *P*ost*g*reSQL's *W*orst *ORM*
 `pg-worm` is an opiniated, straightforward, async ORM for PostgreSQL servers.
-Well, at least that's the goal. 
+Well, at least that's the goal. Currently it's mainly experimental.
 
 This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) 
 and is intended to be used with [`tokio`](https://tokio.rs/).
@@ -86,9 +86,9 @@ MyModel::select(MyModel::my_field.eq(5))
 Currently the following filter functions are supported:
 
  * `Filter::all()` - doesn't check anything
- * `eq(T)` - checks whether the column value is equal to something
- * `one_of(Vec<T>)` - checks whether the vector contains the column value
- * `like(String)` - 
+ * `eq(T)` - checks whether the column is equal to a given value
+ * `one_of(Vec<T>)` - checks whether the column is (at least) one of the given values
+ * `like(String)` - check whether a `String` is `LIKE` a given [pattern](https://www.postgresql.org/docs/current/functions-matching.html)
  
 You can also do filter logic using `!`, `&` and `|`: `MyModel::my_field.eq(5) & !MyModel::other_field.eq("Foo")`.
 This works as you expect logical OR and AND to work.
