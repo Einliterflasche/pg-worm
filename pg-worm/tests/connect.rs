@@ -1,4 +1,4 @@
-use pg_worm::{connect, register, Filter, Model, NoTls, Query, QueryBuilder};
+use pg_worm::{connect, register, Filter, Model, NoTls, Query, QueryBuilder, force_register};
 
 #[derive(Model)]
 struct Book {
@@ -33,12 +33,13 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
     // Then, register the model with the pg_worm client.
+    // Use `register!` if you want to fail if a
+    // table with the same name already exists.
     //
-    // This creates a completely new table.
-    // Beware that should there already be a table
-    // with the same name, it is dropped.
-    register!(Author).await?;
-    register!(Book).await?;    
+    // `force_register` drops the old table,
+    // which is useful for development.
+    force_register!(Author).await?;
+    force_register!(Book).await?;    
 
     // Next, insert a new book.
     // This works by passing values for all

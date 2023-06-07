@@ -15,7 +15,7 @@
 //! Here's a quick example:
 //!
 //! ```
-//! use pg_worm::{register, connect, NoTls, Model, Filter};
+//! use pg_worm::{force_register, connect, NoTls, Model, Filter};
 //!
 //! #[derive(Model)]
 //! // Postgres doesn't allow tables named `user`
@@ -41,7 +41,7 @@
 //!     // This creates a new table. Be aware
 //!     // that any old table with the same name
 //!     // will be dropped and you _will_ lose your data.
-//!     register!(User).await?;
+//!     force_register!(User).await?;
 //!
 //!     // Now start doing what you actually care about.
 //!
@@ -277,17 +277,28 @@ pub async fn register_model<M: Model<M>>() -> Result<(), Error> {
     Ok(())
 }
 
+/// Same as `register_model` but if a table with the same name
+/// already exists, it is dropped instead of returning an error.
+pub async fn force_register_model<M: Model<M>>() -> Result<(), Error> {
+    let client = _get_client()?;
+    let query = format!("DROP TABLE IF EXISTS {} CASCADE; ", M::columns()[0].table_name()) 
+        + M::_table_creation_sql();
+
+    client.batch_execute(&query).await?;
+
+    Ok(())
+}
+
 /// Registers a `Model` with the database by creating a
 /// corresponding table.
 ///
 /// This is just a more convenient version api
 /// for the `register_model<M>` function.
 ///
-/// If a table  with the same name already
-/// exists, it is dropped.
 ///
 /// Returns an error if:
-///  - the client is not connected
+///  - a table with the same name already exists,
+///  - the client is not connected,
 ///  - the creation of the table fails
 ///
 /// # Usage
@@ -304,7 +315,7 @@ pub async fn register_model<M: Model<M>>() -> Result<(), Error> {
 /// #[tokio::main]
 /// async fn main() -> Result<(), pg_worm::Error> {
 ///     // ---- snip connection setup ----
-///     register!(Model).await?;
+///     register!(Foo).await?;
 /// }
 /// ```
 #[macro_export]
@@ -314,13 +325,20 @@ macro_rules! register {
     };
 }
 
+/// Like `register!` but if a table with the same name already
+/// exists, it is dropped instead of returning an error.
+#[macro_export]
+macro_rules! force_register {
+    ($x:ty) => {
+        $crate::force_register_model::<$x>()
+    };
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(dead_code)]
     
-    use pg_worm::{Model, Join, JoinType};
-
-    use crate::{Query, query::QueryBuilder};
+    use pg_worm::{Model, Join, JoinType, Query, QueryBuilder};
 
     #[derive(Model)]
     #[table(table_name = "persons")]
@@ -363,7 +381,7 @@ mod tests {
     fn table_creation_sql() {
         assert_eq!(
             Person::_table_creation_sql(),
-            "DROP TABLE IF EXISTS persons CASCADE; CREATE TABLE persons (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text)"
+            "CREATE TABLE persons (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text)"
         );
     }
 }

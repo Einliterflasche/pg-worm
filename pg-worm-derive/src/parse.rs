@@ -4,14 +4,6 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use syn::Ident;
 
-#[derive(FromDeriveInput)]
-#[darling(attributes(table), supports(struct_named))]
-pub struct ModelInput {
-    ident: syn::Ident,
-    data: Data<(), ModelField>,
-    table_name: Option<String>,
-}
-
 #[derive(Clone, FromField)]
 #[darling(attributes(column))]
 pub struct ModelField {
@@ -25,6 +17,14 @@ pub struct ModelField {
     primary_key: bool,
     #[darling(default)]
     unique: bool
+}
+
+#[derive(FromDeriveInput)]
+#[darling(attributes(table), supports(struct_named))]
+pub struct ModelInput {
+    ident: syn::Ident,
+    data: Data<(), ModelField>,
+    table_name: Option<String>,
 }
 
 impl ModelInput {
@@ -60,8 +60,7 @@ impl ModelInput {
 
     pub fn table_creation_sql(&self) -> String {
         format!(
-            "DROP TABLE IF EXISTS {} CASCADE; CREATE TABLE {} ({})",
-            self.table_name(),
+            "CREATE TABLE {} ({})",
             self.table_name(),
             self.fields()
                 .map(|f| f.column_creation_sql())

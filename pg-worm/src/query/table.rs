@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, ops::Deref};
 
-use tokio_postgres::{types::{ToSql, Type}, Row};
+use tokio_postgres::{types::{ToSql}, Row};
 
 use crate::{Filter, Error};
 

@@ -2,7 +2,7 @@
 
 # `pg-worm`
 ### *P*ost*g*reSQL's *W*orst *ORM*
-`pg-worm` is an opiniated, straightforward, async ORM for PostgreSQL servers.
+`pg-worm` is a straightforward, fully typed async ORM and Query Builder for PostgreSQL.
 Well, at least that's the goal. Currently it's mainly experimental.
 
 This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) 
