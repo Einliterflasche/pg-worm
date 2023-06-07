@@ -2,7 +2,7 @@
 
 # `pg-worm`
 ### *P*ost*g*reSQL's *W*orst *ORM*
-`pg-worm` is a straightforward, fully typed async ORM and Query Builder for PostgreSQL.
+`pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
 Well, at least that's the goal. Currently it's mainly experimental.
 
 This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) 
@@ -17,7 +17,7 @@ and you are ready to go!
 Here's a quick example: 
 
 ```rust
-use pg_worm::{register, connect, NoTls, Model, Filter};
+use pg_worm::{force_register, connect, NoTls, Model, Filter};
 
 #[derive(Model)]
 // Postgres doesn't allow tables named `user`
@@ -39,11 +39,13 @@ async fn main() -> Result<(), pg_worm::Error> {
     // Simply connect to your server...
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
-    // ...and then register your `Model`.
-    // This creates a new table. Be aware
-    // that any old table with the same name 
-    // will be dropped and you _will_ lose your data.
-    register!(User).await?;
+    // Then, register the model with the pg_worm client.
+    // Use `register!` if you want to fail if a
+    // table with the same name already exists.
+    //
+    // `force_register` drops the old table,
+    // which is useful for development.
+    force_register!(User).await?;
 
     // Now start doing what you actually care about.
 
