@@ -281,8 +281,10 @@ pub async fn register_model<M: Model<M>>() -> Result<(), Error> {
 /// already exists, it is dropped instead of returning an error.
 pub async fn force_register_model<M: Model<M>>() -> Result<(), Error> {
     let client = _get_client()?;
-    let query = format!("DROP TABLE IF EXISTS {} CASCADE; ", M::columns()[0].table_name()) 
-        + M::_table_creation_sql();
+    let query = format!(
+        "DROP TABLE IF EXISTS {} CASCADE; ",
+        M::columns()[0].table_name()
+    ) + M::_table_creation_sql();
 
     client.batch_execute(&query).await?;
 
@@ -337,8 +339,10 @@ macro_rules! force_register {
 #[cfg(test)]
 mod tests {
     #![allow(dead_code)]
-    
-    use pg_worm::{Model, Join, JoinType, Query, QueryBuilder};
+
+    use pg_worm::{Join, JoinType, Model, Query, QueryBuilder};
+
+    use crate::ToQuery;
 
     #[derive(Model)]
     #[table(table_name = "persons")]
@@ -353,7 +357,7 @@ mod tests {
         #[column(primary_key, auto)]
         id: i64,
         title: String,
-        author_id: i64
+        author_id: i64,
     }
 
     #[test]
@@ -367,13 +371,14 @@ mod tests {
     #[test]
     fn select_sql() {
         let q = Query::select([&Book::title])
-            .filter(Person::id.eq(5))
+            .filter(Person::name.like("%a%"))
             .join(&Book::author_id, &Person::id, JoinType::Inner)
+            .limit(4)
             .build();
 
         assert_eq!(
             q.stmt(),
-            "SELECT book.title FROM book INNER JOIN persons ON book.author_id = persons.id WHERE persons.id = $1"
+            "SELECT book.title FROM book INNER JOIN persons ON book.author_id = persons.id WHERE persons.name LIKE $1 LIMIT 4"
         )
     }
 

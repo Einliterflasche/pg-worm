@@ -56,11 +56,13 @@ async fn main() -> Result<(), pg_worm::Error> {
     // Querying data is just as easy:
 
     // Retrieve all users there are...
-    let all_users: Vec<User> = User::select(Filter::all()).await;     
+    // This returns a Vec<User>
+    let all_users = User::select(Filter::all()).await;     
     assert_eq!(all_users.len(), 2);
     
-    // Or look for Bob...
-    let bob: Option<User> = User::select_one(User::name.eq("Bob")).await;
+    // Or look for Bob... 
+    // This returns an Option<User>
+    let bob = User::select_one(User::name.eq("Bob")).await;
     assert!(bob.is_some()); // Found him
     assert_eq!(bob.unwrap().name, "Bob");
     

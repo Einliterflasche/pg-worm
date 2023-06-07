@@ -1,4 +1,4 @@
-use pg_worm::{connect, register, Filter, Model, NoTls, Query, QueryBuilder, force_register};
+use pg_worm::{connect, force_register, register, Filter, Model, NoTls, Query, QueryBuilder};
 
 #[derive(Model)]
 struct Book {
@@ -20,7 +20,9 @@ async fn get_authors() -> Vec<Author> {
     let rows = Query::select(Author::COLUMNS)
         .filter(Author::id.eq(1))
         .build()
-        .exec().await.expect("err executing");
+        .exec()
+        .await
+        .expect("err executing");
 
     rows.iter()
         .map(|i| Author::try_from(i).expect("err fromming"))
@@ -39,7 +41,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // `force_register` drops the old table,
     // which is useful for development.
     force_register!(Author).await?;
-    force_register!(Book).await?;    
+    force_register!(Book).await?;
 
     // Next, insert a new book.
     // This works by passing values for all

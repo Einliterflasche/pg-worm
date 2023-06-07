@@ -1,4 +1,4 @@
-use super::DynCol;
+use super::{DynCol, ToQuery};
 
 pub struct Join {
     column: &'static DynCol,
@@ -15,15 +15,21 @@ pub enum JoinType {
 
 impl Join {
     pub const fn new(c1: &'static DynCol, c2: &'static DynCol, ty: JoinType) -> Join {
-        Self { column: c1, on_column: c2, join_type: ty }
+        Self {
+            column: c1,
+            on_column: c2,
+            join_type: ty,
+        }
     }
-    
-    pub fn to_sql(&self) -> String {
+}
+
+impl ToQuery for Join {
+    fn to_sql(&self) -> String {
         let join_type: &'static str = match self.join_type {
             JoinType::Inner => "INNER",
             JoinType::Outer => "OUTER",
             JoinType::Left => "LEFT",
-            JoinType::Right => "RIGHT"
+            JoinType::Right => "RIGHT",
         };
 
         format!(

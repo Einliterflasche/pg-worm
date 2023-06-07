@@ -117,7 +117,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     return Some(
                         #ident::try_from(row).expect("could not parse model from row")
                     );
-                } 
+                }
 
                 None
             }

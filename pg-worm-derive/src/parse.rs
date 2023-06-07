@@ -16,7 +16,7 @@ pub struct ModelField {
     #[darling(default)]
     primary_key: bool,
     #[darling(default)]
-    unique: bool
+    unique: bool,
 }
 
 #[derive(FromDeriveInput)]
@@ -70,8 +70,7 @@ impl ModelInput {
     }
 
     pub fn impl_column_consts(&self) -> TokenStream {
-        let column_consts = self.fields()
-            .map(|f| f.column_const(self));
+        let column_consts = self.fields().map(|f| f.column_const(self));
         let ident = &self.ident;
         quote!(
             impl #ident {

@@ -3,8 +3,8 @@ mod join;
 mod table;
 
 pub use filter::Filter;
-pub use table::{TypedColumn, Column};
 pub use join::{Join, JoinType};
+pub use table::{Column, TypedColumn};
 
 pub type DynCol = dyn Deref<Target = Column>;
 
@@ -16,7 +16,7 @@ use crate::_get_client;
 
 pub struct Query {
     stmt: String,
-    args: Vec<Box<dyn ToSql + Sync + Send>>
+    args: Vec<Box<dyn ToSql + Sync + Send>>,
 }
 
 pub trait QueryBuilder {
@@ -24,27 +24,24 @@ pub trait QueryBuilder {
 }
 
 pub trait ToQuery {
-    fn to_sql(self) -> String;
+    fn to_sql(&self) -> String;
 }
 
 pub struct SelectBuilder {
     cols: Vec<&'static DynCol>,
     filter: Filter,
     joins: Vec<Join>,
-    limit: Option<usize>
+    limit: Option<usize>,
 }
 
 impl Query {
     /// Create a new query.
     fn new(stmt: String, args: Vec<Box<dyn ToSql + Send + Sync>>) -> Query {
-        Query { 
-            stmt, 
-            args
-        }
+        Query { stmt, args }
     }
 
     /// Start building a new SELECT query.
-    /// 
+    ///
     /// # Panics
     /// Panics if an empty array is provided.
     pub fn select<const N: usize>(cols: [&'static DynCol; N]) -> SelectBuilder {
@@ -59,40 +56,39 @@ impl Query {
     /// Execute a query.
     pub async fn exec(&self) -> Result<Vec<Row>, pg_worm::Error> {
         let client = _get_client()?;
-        Ok(
-            client.query(
-            &self.stmt, 
-            self.args
-                .iter()
-                .map(|i| &**i as _)
-                .collect::<Vec<_>>()
-                .as_slice()
+        Ok(client
+            .query(
+                &self.stmt,
+                self.args
+                    .iter()
+                    .map(|i| &**i as _)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
             )
-            .await?
-        )
+            .await?)
     }
 }
 
 impl SelectBuilder {
     /// Start building a new SELECT query.
-    /// 
+    ///
     /// # Panics
     /// Panics if an empty vec is provided.
     pub fn new(cols: Vec<&'static DynCol>) -> SelectBuilder {
         assert_ne!(cols.len(), 0, "must SELECT at least one column");
 
-        SelectBuilder { 
-            cols, 
-            filter: Filter::all(), 
+        SelectBuilder {
+            cols,
+            filter: Filter::all(),
             joins: Vec::new(),
-            limit: None
+            limit: None,
         }
     }
 
     /// Add a filter (WHERE clause) to the select query.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```ignore
     /// let q = Query::select([&Book::title])
     ///     .filter(Book::id.eq(5))
@@ -105,21 +101,22 @@ impl SelectBuilder {
     }
 
     /// Add a join to the select query.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```ignore
     /// let q = Query::select([&Book::id, &Book::title, &Author::name])
     ///     .join(&Book::author, &Author::id, JoinType::Inner)
     ///     .filter(Author::name.eq("Marx"))
     ///     .build();
     /// ```
-    pub fn join(mut self, column: &'static DynCol, on_column: &'static DynCol, join_type: JoinType) -> SelectBuilder {
-        let join = Join::new(
-            column,
-            on_column,
-            join_type
-        );
+    pub fn join(
+        mut self,
+        column: &'static DynCol,
+        on_column: &'static DynCol,
+        join_type: JoinType,
+    ) -> SelectBuilder {
+        let join = Join::new(column, on_column, join_type);
 
         self.joins.push(join);
 
@@ -137,28 +134,46 @@ impl SelectBuilder {
 impl QueryBuilder for SelectBuilder {
     /// Build the query.
     fn build(self) -> Query {
-        let select_cols = self.cols
+        let select_cols = self
+            .cols
             .iter()
             .map(|i| i.full_name())
             .collect::<Vec<_>>()
             .join(", ");
 
-        let joins = self.joins
+        let joins = self
+            .joins
             .iter()
             .map(|i| i.to_sql())
             .collect::<Vec<String>>()
             .join(" ");
 
         let stmt = format!(
-            "SELECT {select_cols} FROM {} {} {}",
+            "SELECT {select_cols} FROM {} {} {} {}",
             self.cols[0].table_name(),
             joins,
-            self.filter.to_sql()
+            self.filter.to_sql(),
+            self.limit.to_sql()
         );
 
-        let args: Vec<Box<dyn ToSql + Sync + Send>> = self.filter
-            .args();
+        let args: Vec<Box<dyn ToSql + Sync + Send>> = self.filter.args();
 
         Query::new(stmt, args)
+    }
+}
+
+impl<T: ToQuery> ToQuery for Option<T> {
+    fn to_sql(&self) -> String {
+        if let Some(x) = self {
+            format!("LIMIT {}", x.to_sql())
+        } else {
+            String::new()
+        }
+    }
+}
+
+impl ToQuery for usize {
+    fn to_sql(&self) -> String {
+        self.to_string()
     }
 }

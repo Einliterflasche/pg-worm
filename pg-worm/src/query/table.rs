@@ -1,12 +1,12 @@
 use std::{marker::PhantomData, ops::Deref};
 
-use tokio_postgres::{types::{ToSql}, Row};
+use tokio_postgres::{types::ToSql, Row};
 
-use crate::{Filter, Error};
+use crate::{Error, Filter};
 
 pub(crate) struct PgTable {
     table_name: String,
-    columns: Vec<PgColumn>
+    columns: Vec<PgColumn>,
 }
 
 pub(crate) struct PgColumn {
@@ -30,22 +30,20 @@ pub struct Column {
     nullable: bool,
     unique: bool,
     primary_key: bool,
-    generated: bool
+    generated: bool,
 }
 
 impl TryFrom<&Row> for PgColumn {
     type Error = Error;
 
     fn try_from(value: &Row) -> Result<Self, Self::Error> {
-        Ok(
-            Self {
-                column_name: value.try_get("column_name")?,
-                is_nullable: value.try_get("is_nullable")?,
-                data_type: value.try_get("data_type")?,
-                is_generated: value.try_get("is_generated")?,
-                is_identity: value.try_get("is_identity")?
-            }
-        )
+        Ok(Self {
+            column_name: value.try_get("column_name")?,
+            is_nullable: value.try_get("is_nullable")?,
+            data_type: value.try_get("data_type")?,
+            is_generated: value.try_get("is_generated")?,
+            is_identity: value.try_get("is_identity")?,
+        })
     }
 }
 
@@ -138,10 +136,7 @@ impl TypedColumn<String> {
     pub fn like(&self, val: impl Into<String>) -> Filter {
         let val: String = val.into();
 
-        Filter::new(
-            format!("{} LIKE $1", self.full_name()),
-            vec![Box::new(val)]
-        )
+        Filter::new(format!("{} LIKE $1", self.full_name()), vec![Box::new(val)])
     }
 }
 
@@ -155,13 +150,13 @@ impl<T: ToSql + Sync> Deref for TypedColumn<T> {
 
 impl Column {
     pub const fn new(table_name: &'static str, column_name: &'static str) -> Column {
-        Column { 
-            column_name, 
+        Column {
+            column_name,
             table_name,
             nullable: false,
             unique: false,
             primary_key: false,
-            generated: false
+            generated: false,
         }
     }
 
@@ -179,19 +174,15 @@ impl Column {
     }
 
     /// Get the full name of the column.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```ignore
     /// let c = Column::new("my_table", "my_col");
     /// assert_eq!(c.full_name(), "my_table.my_col");
     /// ```
     #[inline]
     pub fn full_name(&self) -> String {
-        format!(
-            "{}.{}",
-            self.table_name,
-            self.column_name
-        )
+        format!("{}.{}", self.table_name, self.column_name)
     }
 }
