@@ -14,7 +14,6 @@ use std::ops::Deref;
 
 use crate::_get_client;
 
-
 pub struct Query {
     stmt: String,
     args: Vec<Box<dyn ToSql + Sync + Send>>

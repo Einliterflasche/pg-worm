@@ -1,11 +1,20 @@
 use std::{marker::PhantomData, ops::Deref};
 
-use tokio_postgres::types::ToSql;
+use tokio_postgres::{types::{ToSql, Type}, Row};
 
-use crate::Filter;
+use crate::{Filter, Error};
 
-pub struct Table {
-    table_name: &'static str
+pub(crate) struct PgTable {
+    table_name: String,
+    columns: Vec<PgColumn>
+}
+
+pub(crate) struct PgColumn {
+    column_name: String,
+    data_type: String,
+    is_nullable: bool,
+    is_identity: bool,
+    is_generated: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -22,6 +31,22 @@ pub struct Column {
     unique: bool,
     primary_key: bool,
     generated: bool
+}
+
+impl TryFrom<&Row> for PgColumn {
+    type Error = Error;
+
+    fn try_from(value: &Row) -> Result<Self, Self::Error> {
+        Ok(
+            Self {
+                column_name: value.try_get("column_name")?,
+                is_nullable: value.try_get("is_nullable")?,
+                data_type: value.try_get("data_type")?,
+                is_generated: value.try_get("is_generated")?,
+                is_identity: value.try_get("is_identity")?
+            }
+        )
+    }
 }
 
 macro_rules! impl_prop_typed_col {
