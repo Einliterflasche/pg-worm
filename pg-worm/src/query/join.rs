@@ -1,11 +1,13 @@
 use super::{DynCol, ToQuery};
 
+/// A struct representing SQL joins.
 pub struct Join {
     column: &'static DynCol,
     on_column: &'static DynCol,
     join_type: JoinType,
 }
 
+/// The different types of SQL joins.
 pub enum JoinType {
     Inner,
     Outer,

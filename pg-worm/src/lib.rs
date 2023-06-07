@@ -9,7 +9,7 @@
 //! ## Usage
 //! Fortunately, using this library is very easy.
 //!
-//! Just derive the `Model` trait for your type, connect to your database
+//! Just derive the [`Model`] trait for your type, connect to your database
 //! and you are ready to go!
 //!
 //! Here's a quick example:
@@ -69,10 +69,10 @@
 //! ```
 //!
 //! ## Filters
-//! Filters can be used to easily include `WHERE` clauses in your queries.
+//! [`Filter`]s can be used to easily include `WHERE` clauses in your queries.
 //!
 //! They can be constructed by calling functions of the respective column.
-//! `pg_worm` automatically constructs a `Column` constant for each field
+//! `pg_worm` automatically constructs a [`TypedColumn`] constant for each field
 //! of your `Model`.
 //!
 //! A practical example would look like this:
@@ -85,11 +85,9 @@
 //!
 //!  * `Filter::all()` - doesn't check anything
 //!  * `eq(T)` - checks whether the column value is equal to something
-//!  * `neq(T)` - checks whether the column value is not equal to something
 //!  * `one_of(Vec<T>)` - checks whether the vector contains the column value.
-//!  * `none_of(Vec<T>)` - checks whether the vector does not contain the column value.
 //!  
-//! You can also do filter logic using `&` and `|`: `MyModel::my_field.eq(5) & MyModel::other_field.neq("Foo")`.
+//! You can also do filter logic using `!`, `&` and `|`: `MyModel::my_field.eq(5) & !MyModel::other_field.eq("Foo")`.
 //! This works as you expect logical OR and AND to work.
 //! Please notice that, at this point, custom priorization via parantheses
 //! is **not possible**.
@@ -231,7 +229,8 @@ where
 /// to a database server. Essentially writes the boilerplate
 /// code needed. See the [`tokio_postgres`](https://docs.rs/tokio-postgres/latest/tokio_postgres/config/struct.Config.html)
 /// documentation for more information on the config format.
-///
+/// 
+/// Calls the [`connect()`] function.
 /// Needs `tokio` to work.
 ///
 /// # Panics
@@ -254,7 +253,7 @@ macro_rules! connect {
 /// Register your model with the database.
 /// This creates a table representing your model.
 ///
-/// Use the `register!` macro for a more convenient api.
+/// Use the [`register!`] macro for a more convenient api.
 ///
 /// # Usage
 /// ```ignore
@@ -272,7 +271,7 @@ macro_rules! connect {
 /// ```
 pub async fn register_model<M: Model<M>>() -> Result<(), Error>
 where
-    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>
+    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>,
 {
     let client = _get_client()?;
     client.batch_execute(M::_table_creation_sql()).await?;
@@ -280,11 +279,11 @@ where
     Ok(())
 }
 
-/// Same as `register_model` but if a table with the same name
+/// Same as [`register_model`] but if a table with the same name
 /// already exists, it is dropped instead of returning an error.
 pub async fn force_register_model<M: Model<M>>() -> Result<(), Error>
 where
-    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>
+    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>,
 {
     let client = _get_client()?;
     let query = format!(
@@ -297,11 +296,11 @@ where
     Ok(())
 }
 
-/// Registers a `Model` with the database by creating a
+/// Registers a [`Model`] with the database by creating a
 /// corresponding table.
 ///
 /// This is just a more convenient version api
-/// for the `register_model<M>` function.
+/// for the [`register_model`] function.
 ///
 ///
 /// Returns an error if:
@@ -333,7 +332,7 @@ macro_rules! register {
     };
 }
 
-/// Like `register!` but if a table with the same name already
+/// Like [`register!`] but if a table with the same name already
 /// exists, it is dropped instead of returning an error.
 #[macro_export]
 macro_rules! force_register {
@@ -348,7 +347,7 @@ mod tests {
 
     use pg_worm::{Join, JoinType, Model, Query, QueryBuilder};
 
-    use crate::{ToQuery, Filter};
+    use crate::{Filter, ToQuery};
 
     #[derive(Model)]
     #[table(table_name = "persons")]

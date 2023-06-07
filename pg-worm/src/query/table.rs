@@ -17,12 +17,40 @@ pub(crate) struct PgColumn {
     is_generated: bool,
 }
 
+/// A wrapper around the [`Column`] struct which includes
+/// the rust type of the field.
+///
+/// For each field of a [`pg_worm::Model`] a `TypedColumn` is automatically
+/// generated.
+///
+/// A `TypedColumn` can be used to access information about
+/// the column and create `Filter`s regarding this column.
+///
+/// # Example
+///
+/// ```
+/// use pg_worm::Model;
+///
+/// #[derive(Model)]
+/// struct Foo {
+///     baz: i64
+/// }
+///
+/// assert_eq!(Foo::baz.column_name(), "baz");
+///
+/// ```
+///
 #[derive(Clone, Copy, Debug)]
 pub struct TypedColumn<T: ToSql + Sync> {
-    pub column: Column,
+    column: Column,
     rs_type: PhantomData<T>,
 }
 
+/// This type represents a column.
+///  
+/// It can be used to retrieve information about the column.
+///
+/// It is mostly seen in it's wrapped form [`TypedColumn`].
 #[derive(Copy, Clone, Debug)]
 pub struct Column {
     column_name: &'static str,
@@ -79,11 +107,6 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
     /// Get the column's name
     pub const fn name(&self) -> &'static str {
         self.column.column_name
-    }
-
-    /// Get the column object.
-    pub const fn col(&self) -> &Column {
-        &self.column
     }
 
     impl_prop_typed_col!(nullable, unique, primary_key, generated);
@@ -177,9 +200,14 @@ impl Column {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let c = Column::new("my_table", "my_col");
-    /// assert_eq!(c.full_name(), "my_table.my_col");
+    /// ```
+    /// use pg_worm::Model;
+    ///
+    /// #[derive(Model)]
+    /// struct Foo {
+    ///     baz: String
+    /// }
+    /// assert_eq!(Foo::baz.full_name(), "foo.baz");
     /// ```
     #[inline]
     pub fn full_name(&self) -> String {

@@ -1,4 +1,4 @@
-use pg_worm::{connect, force_register, Filter, Model, NoTls, Query, QueryBuilder, JoinType};
+use pg_worm::{connect, force_register, Filter, JoinType, Model, NoTls, Query, QueryBuilder};
 use tokio::try_join;
 
 #[derive(Model)]
@@ -28,7 +28,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     //
     // `force_register` drops the old table,
     // which is useful for development.
-    // 
+    //
     // If your tables already exist, skip this part.
     force_register!(Author).await?;
     force_register!(Book).await?;
@@ -40,7 +40,6 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Author::insert("Stephen King"),
         Author::insert("Martin Luther King"),
         Author::insert("Karl Marx"),
-
         Book::insert("Foo - Part I", 1),
         Book::insert("Foo - Part II", 2),
         Book::insert("Foo - Part III", 3)

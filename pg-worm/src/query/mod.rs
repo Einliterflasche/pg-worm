@@ -12,21 +12,26 @@ use tokio_postgres::types::ToSql;
 
 use std::ops::Deref;
 
-use crate::{_get_client, Model, Error};
+use crate::{Error, Model, _get_client};
 
+/// An executable query. Built using a [`QueryBuilder`].
 pub struct Query {
     stmt: String,
     args: Vec<Box<dyn ToSql + Sync + Send>>,
 }
 
+/// A trait for building a [`Query`].
 pub trait QueryBuilder {
     fn build(self) -> Query;
 }
 
+/// This trait is implemented by anything
+/// that goes into a query.
 pub trait ToQuery {
     fn to_sql(&self) -> String;
 }
 
+/// [`QueryBuilder`] for `SELECT` queries.
 pub struct SelectBuilder {
     cols: Vec<&'static DynCol>,
     filter: Filter,
@@ -92,11 +97,19 @@ impl SelectBuilder {
         }
     }
 
-    /// Add a filter (WHERE clause) to the select query.
+    /// Add a [`Filter`] to the select query.
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```
+    /// use pg_worm::{Model, Query, QueryBuilder};
+    ///
+    /// #[derive(Model)]
+    /// struct Book {
+    ///     id: i64,
+    ///     title: String
+    /// }
+    ///
     /// let q = Query::select([&Book::title])
     ///     .filter(Book::id.eq(5))
     ///     .build();
@@ -107,13 +120,30 @@ impl SelectBuilder {
         self
     }
 
-    /// Add a join to the select query.
+    /// Add a [`Join`] to the select query.
     ///
     /// # Example
     ///
     /// ```ignore
+    /// use pg_worm::{Model, Query, QueryBuilder, JoinType};
+    ///
+    /// #[derive(Model)]
+    /// struct Book {
+    ///     #[column(primary_key, auto)]
+    ///     id: i64,
+    ///     title: String,
+    ///     author_id: i64
+    /// }
+    ///
+    /// #[derive(Model)]
+    /// struct Author {
+    ///     #[column(primary_key, auto)]
+    ///     id: i64,
+    ///     name: String
+    /// }
+    ///
     /// let q = Query::select([&Book::id, &Book::title, &Author::name])
-    ///     .join(&Book::author, &Author::id, JoinType::Inner)
+    ///     .join(&Book::author_id, &Author::id, JoinType::Inner)
     ///     .filter(Author::name.eq("Marx"))
     ///     .build();
     /// ```
