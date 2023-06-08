@@ -15,7 +15,6 @@
 //! Here's a quick example:
 //!
 //! ```
-//! 
 //! use pg_worm::{connect, force_register, Filter, JoinType, Model, NoTls, Query, QueryBuilder};
 //! use tokio::try_join;
 //! 
@@ -87,6 +86,7 @@
 //! 
 //! 	// Graceful shutdown
 //!     Ok(())
+//! }
 //! ```
 //!
 //! ## Filters
