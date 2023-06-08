@@ -20,9 +20,11 @@ Here's a quick example:
 use pg_worm::{connect, force_register, Filter, JoinType, Model, NoTls, Query, QueryBuilder};
 use tokio::try_join;
 
-// First easily define your models
+// First easily define your models.
 #[derive(Model)]
 struct Book {
+    // `id` will be the primary key column and
+	// automatically generated/incremented
     #[column(primary_key, auto)]
     id: i64,
     #[column(unique)]
@@ -39,7 +41,7 @@ struct Author {
 
 #[tokio::main]
 async fn main() -> Result<(), pg_worm::Error> {
-    // First create a connection. This can be only done once.
+    // First connect to your server. This can be only done once.
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
     // Then, create tables for your models.
@@ -64,16 +66,17 @@ async fn main() -> Result<(), pg_worm::Error> {
         Book::insert("Foo - Part III", 3)
     )?;
 
+	// Do a simple query for all books
     let books: Vec<Book> = Book::select(Filter::all()).await;
     assert_eq!(books.len(), 3);
 
     // Or search for a specific book
-    let book = Book::select_one(Book::title.like("Foo%II")).await;
+    let book = Book::select_one(Book::title.eq("Foo - Part II")).await;
     assert!(book.is_some());
 
     // Or make more complex queries using the query builder
     let king_books: Vec<Book> = Query::select(Book::COLUMNS)
-        .filter(Author::name.like("%King%")) // Matches all names which include `King`
+        .filter(Author::name.like("%King%"))
         .join(&Book::author_id, &Author::id, JoinType::Inner)
         .build()
         .exec()
@@ -83,6 +86,7 @@ async fn main() -> Result<(), pg_worm::Error> {
     // Or delete a book, you don't like
     Book::delete(Book::title.eq("Foo - Part II")).await;
 
+	// Graceful shutdown
     Ok(())
 }
 ```
@@ -128,7 +132,7 @@ You can modify your query using the following methods:
  * `.join()` - add a `JOIN` for querying accross tables/models
  * `.limit()` - add a `LIMIT` to how many rows are returned
 
-After you have configured your query, build it using the `.builder()` method.
+After you have configured your query, build it using the `.build()` method.
 Then, execute it by calling `.exec::<M>()`, where `M` is the `Model` which
 should be parsed from the query result. It may be inferred.
 
