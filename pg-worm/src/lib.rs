@@ -41,7 +41,7 @@
 //!     // This creates a new table. Be aware
 //!     // that any old table with the same name
 //!     // will be dropped and you _will_ lose your data.
-//!     force_register!(User).await?;
+//!     force_register!(User)?;
 //!
 //!     // Now start doing what you actually care about.
 //!
@@ -302,7 +302,8 @@ where
 /// This is just a more convenient version api
 /// for the [`register_model`] function.
 ///
-///
+/// This macro, too, requires the `tokio` crate.
+/// 
 /// Returns an error if:
 ///  - a table with the same name already exists,
 ///  - the client is not connected,
@@ -315,20 +316,22 @@ where
 ///
 /// #[derive(Model)]
 /// struct Foo {
-///     #[column(primary_ley)]
+///     #[column(primary_key)]
 ///     id: i64
 /// }
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), pg_worm::Error> {
 ///     // ---- snip connection setup ----
-///     register!(Foo).await?;
+///     register!(Foo)?;
 /// }
 /// ```
 #[macro_export]
 macro_rules! register {
-    ($x:ty) => {
-        $crate::register_model::<$x>()
+    ($($x:ty),+) => {
+        tokio::try_join!(
+            $($crate::register_model::<$x>()),*
+        )
     };
 }
 
@@ -336,8 +339,10 @@ macro_rules! register {
 /// exists, it is dropped instead of returning an error.
 #[macro_export]
 macro_rules! force_register {
-    ($x:ty) => {
-        $crate::force_register_model::<$x>()
+    ($($x:ty),+) => {
+        tokio::try_join!(
+            $($crate::force_register_model::<$x>()),*
+        )
     };
 }
 

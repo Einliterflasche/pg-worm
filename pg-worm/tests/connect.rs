@@ -30,8 +30,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // which is useful for development.
     //
     // If your tables already exist, skip this part.
-    force_register!(Author).await?;
-    force_register!(Book).await?;
+    force_register!(Author, Book)?;
 
     // Next, insert some data.
     // This works by passing values for all
@@ -54,7 +53,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
 
     // Or make more complex queries using the query builder
     let king_books: Vec<Book> = Query::select(Book::COLUMNS)
-        .filter(Author::name.like("%King%"))
+        .filter(Author::name.like("%King%")) // Matches all names which include `King`
         .join(&Book::author_id, &Author::id, JoinType::Inner)
         .build()
         .exec()
