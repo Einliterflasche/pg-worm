@@ -1,4 +1,4 @@
-use pg_worm::{connect, force_register, Filter, JoinType, Model, NoTls, Query, QueryBuilder};
+use pg_worm::{connect, force_register, Filter, JoinType, Model, NoTls, Query};
 use tokio::try_join;
 
 #[derive(Model)]
@@ -62,6 +62,11 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
 
     // Or delete a book, you don't like
     Book::delete(Book::title.eq("Foo - Part II")).await;
+
+    Query::delete([&Book::id])
+        .filter(Book::title.like("%II%"))
+        .build()
+        .exec();
 
     Ok(())
 }

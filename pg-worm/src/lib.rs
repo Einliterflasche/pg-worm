@@ -392,7 +392,7 @@ macro_rules! force_register {
 mod tests {
     #![allow(dead_code)]
 
-    use pg_worm::{Join, JoinType, Model, Query, QueryBuilder};
+    use pg_worm::{Join, JoinType, Model, Query};
 
     use crate::{Filter, ToQuery};
 

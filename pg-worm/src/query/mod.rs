@@ -10,7 +10,7 @@ pub type DynCol = dyn Deref<Target = Column>;
 
 use tokio_postgres::types::ToSql;
 
-use std::ops::Deref;
+use std::{ops::Deref, marker::PhantomData};
 
 use crate::{Error, Model, _get_client};
 
@@ -20,23 +20,50 @@ pub struct Query {
     args: Vec<Box<dyn ToSql + Sync + Send>>,
 }
 
-/// A trait for building a [`Query`].
-pub trait QueryBuilder {
-    fn build(self) -> Query;
+/// Implements either all or the specified traits
+/// for a given type.
+macro_rules! impl_for {
+    ($ty:ty, $($trait:ty),+) => {
+        $(
+            impl $trait for $ty { }
+        )*
+    };
+
+    ($ty:ty) => {
+        impl_for!(
+            $ty,
+            Filterable,
+            Joinable,
+            Limitable
+        );
+    }
+}
+
+pub trait Filterable {}
+pub trait Joinable {}
+pub trait Limitable {}
+
+pub struct Select;
+pub struct Insert;
+pub struct Delete;
+pub struct Update;
+
+impl_for!(Select);
+impl_for!(Delete);
+impl_for!(Update);
+
+pub struct QueryBuilder<Type> {
+    cols: Vec<&'static DynCol>,
+    filter: Filter,
+    joins: Vec<Join>,
+    limit: Option<usize>,
+    _type: PhantomData<Type>
 }
 
 /// This trait is implemented by anything
 /// that goes into a query.
 pub trait ToQuery {
     fn to_sql(&self) -> String;
-}
-
-/// [`QueryBuilder`] for `SELECT` queries.
-pub struct SelectBuilder {
-    cols: Vec<&'static DynCol>,
-    filter: Filter,
-    joins: Vec<Join>,
-    limit: Option<usize>,
 }
 
 impl Query {
@@ -49,8 +76,12 @@ impl Query {
     ///
     /// # Panics
     /// Panics if an empty array is provided.
-    pub fn select<const N: usize>(cols: [&'static DynCol; N]) -> SelectBuilder {
-        SelectBuilder::new(cols.into_iter().collect())
+    pub fn select<const N: usize>(cols: [&'static DynCol; N]) -> QueryBuilder<Select> {
+        QueryBuilder::<Select>::new(cols.into_iter().collect())
+    }
+
+    pub fn delete<const N: usize>(cols: [&'static DynCol; N]) -> QueryBuilder<Delete> {
+        QueryBuilder::new(cols.into_iter().collect())
     }
 
     /// Get the query's statement
@@ -81,23 +112,26 @@ impl Query {
     }
 }
 
-impl SelectBuilder {
-    /// Start building a new SELECT query.
+impl<T> QueryBuilder<T> {
+    /// Start building a new query.
     ///
     /// # Panics
     /// Panics if an empty vec is provided.
-    pub fn new(cols: Vec<&'static DynCol>) -> SelectBuilder {
-        assert_ne!(cols.len(), 0, "must SELECT at least one column");
+    fn new(cols: Vec<&'static DynCol>) -> QueryBuilder<T> {
+        assert_ne!(cols.len(), 0, "must provide at least one column");
 
-        SelectBuilder {
+        QueryBuilder { 
             cols,
             filter: Filter::all(),
             joins: Vec::new(),
             limit: None,
+            _type: PhantomData::<T>
         }
     }
+}
 
-    /// Add a [`Filter`] to the select query.
+impl<T: Filterable> QueryBuilder<T> {
+    /// Add a [`Filter`] to the query.
     ///
     /// # Example
     ///
@@ -114,13 +148,15 @@ impl SelectBuilder {
     ///     .filter(Book::id.eq(5))
     ///     .build();
     /// ```
-    pub fn filter(mut self, new_filter: Filter) -> SelectBuilder {
+    pub fn filter(mut self, new_filter: Filter) -> QueryBuilder<T> {
         self.filter = self.filter & new_filter;
 
         self
     }
+}
 
-    /// Add a [`Join`] to the select query.
+impl<T: Joinable> QueryBuilder<T> {
+    /// Add a [`Join`] to the query.
     ///
     /// # Example
     ///
@@ -152,25 +188,27 @@ impl SelectBuilder {
         column: &'static DynCol,
         on_column: &'static DynCol,
         join_type: JoinType,
-    ) -> SelectBuilder {
+    ) -> QueryBuilder<T> {
         let join = Join::new(column, on_column, join_type);
 
         self.joins.push(join);
 
         self
     }
+}
 
+impl<T: Limitable> QueryBuilder<T> {
     /// Add a LIMIT to your query.
-    pub fn limit(mut self, n: usize) -> SelectBuilder {
+    pub fn limit(mut self, n: usize) -> QueryBuilder<T> {
         self.limit = Some(n);
 
         self
     }
 }
 
-impl QueryBuilder for SelectBuilder {
+impl QueryBuilder<Select> {
     /// Build the query.
-    fn build(self) -> Query {
+    pub fn build(self) -> Query {
         let select_cols = self
             .cols
             .iter()
@@ -178,24 +216,30 @@ impl QueryBuilder for SelectBuilder {
             .collect::<Vec<_>>()
             .join(", ");
 
-        let joins = self
-            .joins
-            .iter()
-            .map(|i| i.to_sql())
-            .collect::<Vec<String>>()
-            .join(" ");
-
         let stmt = format!(
             "SELECT {select_cols} FROM {} {} {} {}",
             self.cols[0].table_name(),
-            joins,
+            self.joins.to_sql(),
             self.filter.to_sql(),
             self.limit.to_sql()
         );
 
-        let args: Vec<Box<dyn ToSql + Sync + Send>> = self.filter.args();
+        Query::new(stmt, self.filter.args())
+    }
+}
 
-        Query::new(stmt, args)
+impl QueryBuilder<Delete> {
+    pub fn build(self) -> Query {
+        let delete_table = self.cols[0].table_name();
+
+        let stmt = format!(
+            "DELET FROM TABLE {delete_table} {} {} {}",
+            self.joins.to_sql(),
+            self.filter.to_sql(),
+            self.limit.to_sql()
+        );
+
+        Query::new(stmt, self.filter.args())
     }
 }
 
@@ -212,5 +256,15 @@ impl<T: ToQuery> ToQuery for Option<T> {
 impl ToQuery for usize {
     fn to_sql(&self) -> String {
         self.to_string()
+    }
+}
+
+impl ToQuery for Vec<Join> {
+    fn to_sql(&self) -> String {
+        self
+            .iter()
+            .map(|i| i.to_sql())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
