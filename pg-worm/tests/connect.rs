@@ -1,4 +1,4 @@
-use pg_worm::{connect, force_register, Filter, JoinType, Model, NoTls, Query};
+use pg_worm::prelude::*;
 use tokio::try_join;
 
 #[derive(Model)]
@@ -52,21 +52,18 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     assert!(book.is_some());
 
     // Or make more complex queries using the query builder
-    let king_books: Vec<Book> = Query::select(Book::COLUMNS)
+    let king_books: Vec<Book> = QueryBuilder::<Select>::new(Book::COLUMNS)
         .filter(Author::name.like("%King%")) // Matches all names which include `King`
         .join(&Book::author_id, &Author::id, JoinType::Inner)
         .build()
         .exec()
-        .await?;
+        .await?
+        .to_models()?;
+
     assert_eq!(king_books.len(), 2);
 
     // Or delete a book, you don't like
     Book::delete(Book::title.eq("Foo - Part II")).await;
-
-    Query::delete([&Book::id])
-        .filter(Book::title.like("%II%"))
-        .build()
-        .exec();
 
     Ok(())
 }

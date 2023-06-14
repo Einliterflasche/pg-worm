@@ -8,16 +8,17 @@ pub use table::{Column, TypedColumn};
 
 pub type DynCol = dyn Deref<Target = Column>;
 
-use tokio_postgres::types::ToSql;
+use tokio_postgres::{types::ToSql, Row};
 
-use std::{ops::Deref, marker::PhantomData};
+use std::{marker::PhantomData, ops::Deref};
 
-use crate::{Error, Model, _get_client};
+use crate::_get_client;
 
 /// An executable query. Built using a [`QueryBuilder`].
-pub struct Query {
+pub struct Query<T = Rows> {
     stmt: String,
     args: Vec<Box<dyn ToSql + Sync + Send>>,
+    method: PhantomData<T>,
 }
 
 /// Implements either all or the specified traits
@@ -48,6 +49,9 @@ pub struct Insert;
 pub struct Delete;
 pub struct Update;
 
+pub struct Rows;
+pub struct RowsAffected;
+
 impl_for!(Select);
 impl_for!(Delete);
 impl_for!(Update);
@@ -57,7 +61,7 @@ pub struct QueryBuilder<Type> {
     filter: Filter,
     joins: Vec<Join>,
     limit: Option<usize>,
-    _type: PhantomData<Type>
+    _type: PhantomData<Type>,
 }
 
 /// This trait is implemented by anything
@@ -66,31 +70,25 @@ pub trait ToQuery {
     fn to_sql(&self) -> String;
 }
 
-impl Query {
+impl<T> Query<T> {
     /// Create a new query.
-    fn new(stmt: String, args: Vec<Box<dyn ToSql + Send + Sync>>) -> Query {
-        Query { stmt, args }
-    }
-
-    /// Start building a new SELECT query.
-    ///
-    /// # Panics
-    /// Panics if an empty array is provided.
-    pub fn select<const N: usize>(cols: [&'static DynCol; N]) -> QueryBuilder<Select> {
-        QueryBuilder::<Select>::new(cols.into_iter().collect())
-    }
-
-    pub fn delete<const N: usize>(cols: [&'static DynCol; N]) -> QueryBuilder<Delete> {
-        QueryBuilder::new(cols.into_iter().collect())
+    fn new(stmt: String, args: Vec<Box<dyn ToSql + Send + Sync>>) -> Query<T> {
+        Query {
+            stmt,
+            args,
+            method: PhantomData::<T>,
+        }
     }
 
     /// Get the query's statement
     pub fn stmt(&self) -> &str {
         &self.stmt
     }
+}
 
-    /// Execute a query.
-    pub async fn exec<M: Model<M>>(&self) -> Result<Vec<M>, pg_worm::Error> {
+impl Query<Rows> {
+    /// Execute a query and return the resulting rows.
+    pub async fn exec(&self) -> Result<Vec<Row>, pg_worm::Error> {
         let client = _get_client()?;
         let rows = client
             .query(
@@ -103,30 +101,25 @@ impl Query {
             )
             .await?;
 
-        let res = rows
-            .iter()
-            .map(|i| M::try_from(i))
-            .collect::<Result<Vec<M>, Error>>()?;
-
-        Ok(res)
+        Ok(rows)
     }
 }
 
-impl<T> QueryBuilder<T> {
-    /// Start building a new query.
-    ///
-    /// # Panics
-    /// Panics if an empty vec is provided.
-    fn new(cols: Vec<&'static DynCol>) -> QueryBuilder<T> {
-        assert_ne!(cols.len(), 0, "must provide at least one column");
+impl Query<RowsAffected> {
+    pub async fn exec(&self) -> Result<u64, pg_worm::Error> {
+        let client = _get_client()?;
+        let res = client
+            .execute(
+                &self.stmt,
+                self.args
+                    .iter()
+                    .map(|i| &**i as _)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )
+            .await?;
 
-        QueryBuilder { 
-            cols,
-            filter: Filter::all(),
-            joins: Vec::new(),
-            limit: None,
-            _type: PhantomData::<T>
-        }
+        Ok(res)
     }
 }
 
@@ -136,7 +129,7 @@ impl<T: Filterable> QueryBuilder<T> {
     /// # Example
     ///
     /// ```
-    /// use pg_worm::{Model, Query, QueryBuilder};
+    /// use pg_worm::prelude::*;
     ///
     /// #[derive(Model)]
     /// struct Book {
@@ -144,7 +137,7 @@ impl<T: Filterable> QueryBuilder<T> {
     ///     title: String
     /// }
     ///
-    /// let q = Query::select([&Book::title])
+    /// let q = QueryBuilder::<Select>::new([&Book::title])
     ///     .filter(Book::id.eq(5))
     ///     .build();
     /// ```
@@ -207,6 +200,23 @@ impl<T: Limitable> QueryBuilder<T> {
 }
 
 impl QueryBuilder<Select> {
+    /// Start building a SELECT query.
+    /// `cols` must not be empty.
+    ///
+    /// # Panics
+    /// Panics if `cols.len() == 0`.
+    pub fn new<const N: usize>(cols: [&'static DynCol; N]) -> QueryBuilder<Select> {
+        assert!(!cols.is_empty(), "must select something");
+
+        QueryBuilder {
+            cols: cols.into_iter().collect(),
+            filter: Filter::all(),
+            joins: Vec::new(),
+            limit: None,
+            _type: PhantomData::<Select>,
+        }
+    }
+
     /// Build the query.
     pub fn build(self) -> Query {
         let select_cols = self
@@ -224,22 +234,34 @@ impl QueryBuilder<Select> {
             self.limit.to_sql()
         );
 
-        Query::new(stmt, self.filter.args())
+        Query::<Rows>::new(stmt, self.filter.args())
     }
 }
 
 impl QueryBuilder<Delete> {
-    pub fn build(self) -> Query {
+    pub fn new<const N: usize>(cols: [&'static DynCol; N]) -> QueryBuilder<Delete> {
+        assert!(!cols.is_empty(), "must delete from somewhere");
+
+        QueryBuilder {
+            cols: cols.into_iter().collect(),
+            filter: Filter::all(),
+            joins: Vec::new(),
+            limit: None,
+            _type: PhantomData::<Delete>,
+        }
+    }
+
+    pub fn build(self) -> Query<RowsAffected> {
         let delete_table = self.cols[0].table_name();
 
         let stmt = format!(
-            "DELET FROM TABLE {delete_table} {} {} {}",
+            "DELETE FROM {delete_table} {} {} {}",
             self.joins.to_sql(),
             self.filter.to_sql(),
             self.limit.to_sql()
         );
 
-        Query::new(stmt, self.filter.args())
+        Query::<RowsAffected>::new(stmt, self.filter.args())
     }
 }
 
@@ -261,8 +283,7 @@ impl ToQuery for usize {
 
 impl ToQuery for Vec<Join> {
     fn to_sql(&self) -> String {
-        self
-            .iter()
+        self.iter()
             .map(|i| i.to_sql())
             .collect::<Vec<_>>()
             .join(" ")

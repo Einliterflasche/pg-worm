@@ -66,8 +66,14 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         }
 
+
         #[pg_worm::async_trait]
         impl Model<#ident> for #ident {
+            #[inline]
+            fn table_name() -> &'static str {
+                #table_name
+            }
+
             #[inline]
             fn _table_creation_sql() -> &'static str {
                 #table_creation_sql
@@ -78,60 +84,52 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
 
             async fn select(filter: pg_worm::Filter) -> Vec<#ident> {
-                use pg_worm::QueryBuilder;
+                use pg_worm::prelude::*;
 
-                let query = pg_worm::Query::select(#ident::COLUMNS)
+                let query = QueryBuilder::<Select>::new(#ident::COLUMNS)
                     .filter(filter)
                     .build();
 
                 let res: Vec<#ident> = query
                     .exec()
                     .await
-                    .expect("failed to query");
+                    .expect("failed to query")
+                    .to_models()
+                    .expect("failed to parse response to struct");
 
                 res
             }
 
             async fn select_one(filter: pg_worm::Filter) -> Option<#ident> {
-                use pg_worm::QueryBuilder;
+                use pg_worm::prelude::*;
 
-                let query = pg_worm::Query::select(#ident::COLUMNS)
+                let query = QueryBuilder::<Select>::new(#ident::COLUMNS)
                     .filter(filter)
                     .build();
 
                 let res: Vec<#ident> = query
                     .exec()
                     .await
-                    .expect("failed to query");
+                    .expect("failed to query")
+                    .to_models()
+                    .expect("failed to parse response to struct");
 
                 res.into_iter().next()
             }
 
             async fn delete(filter: pg_worm::Filter) -> u64 {
-                // Retrieve client. Panic if not connected
-                let client = pg_worm::_get_client()
-                    .expect("not connected to db");
+                use pg_worm::prelude::*;
 
-                // Convert args to correct datatype
-                let args: Vec<&(dyn pg_worm::pg::types::ToSql + Sync)> = filter
-                    ._args()
-                    .into_iter()
-                    .map(|i| &**i as _)
-                    .collect();
+                // Build the query
+                let query = QueryBuilder::<Delete>::new(#ident::COLUMNS)
+                    .filter(filter)
+                    .build();
 
                 // Make the query
-                let rows_affected = client
-                    .execute(
-                        // Fill in table name and filter
-                        format!(
-                            "DELETE FROM {} {}",
-                            #table_name,
-                            if filter._stmt().is_empty() { "".to_string() }
-                            else { format!("WHERE {}", filter._stmt()) }
-                        ).as_str(),
-                        // Pass filter arguments
-                        args.as_slice()
-                    ).await.unwrap();
+                let rows_affected = query
+                    .exec()
+                    .await
+                    .expect("couldn't execute query");
 
                 // Return the number of rows affected
                 rows_affected
@@ -146,6 +144,19 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     &#ident::#field_idents
                 ),*
             ];
+
+            fn try_from_vec(values: &Vec<pg_worm::Row>) -> Result<Vec<#ident>, pg_worm::Error> {
+                values
+                    .iter()
+                    .map(|i| #ident::try_from(i))
+                    .collect()
+            }
+        }
+
+        impl pg_worm::ToModels<#ident> for Vec<pg_worm::Row> {
+            fn to_models(&self) -> Result<Vec<#ident>, pg_worm::Error> {
+                #ident::try_from_vec(self)
+            }
         }
     );
 
