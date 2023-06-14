@@ -79,7 +79,7 @@
 //!         .build()
 //!         .exec()
 //!         .await?
-//!         .to_models()?;
+//!         .to_model()?;
 //!     assert_eq!(king_books.len(), 2);
 //!
 //!     // Or delete a book, you don't like
@@ -173,7 +173,7 @@ use thiserror::Error;
 pub mod prelude {
     pub use crate::{
         connect, force_register, register, Delete, Filter, Join, JoinType, Model, NoTls,
-        QueryBuilder, Select, ToModels,
+        QueryBuilder, Select, ToModel,
     };
 }
 
@@ -236,8 +236,8 @@ pub trait Model<T>: for<'a> TryFrom<&'a Row, Error = Error> {
     async fn delete(filter: Filter) -> u64;
 }
 
-pub trait ToModels<M: Model<M>> {
-    fn to_models(&self) -> Result<Vec<M>, pg_worm::Error>;
+pub trait ToModel<M: Model<M>> {
+    fn to_model(&self) -> Result<Vec<M>, pg_worm::Error>;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();

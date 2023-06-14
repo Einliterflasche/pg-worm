@@ -17,7 +17,7 @@ and you are ready to go!
 Here's a quick example: 
 
 ```rust
-use pg_worm::{connect, force_register, Filter, JoinType, Model, NoTls, Query, QueryBuilder};
+use pg_worm::prelude::*;
 use tokio::try_join;
 
 // First easily define your models.
@@ -80,7 +80,8 @@ async fn main() -> Result<(), pg_worm::Error> {
         .join(&Book::author_id, &Author::id, JoinType::Inner)
         .build()
         .exec()
-        .await?;
+        .await?
+        .to_model()?;
     assert_eq!(king_books.len(), 2);
 
     // Or delete a book, you don't like

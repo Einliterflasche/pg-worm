@@ -94,7 +94,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     .exec()
                     .await
                     .expect("failed to query")
-                    .to_models()
+                    .to_model()
                     .expect("failed to parse response to struct");
 
                 res
@@ -111,7 +111,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     .exec()
                     .await
                     .expect("failed to query")
-                    .to_models()
+                    .to_model()
                     .expect("failed to parse response to struct");
 
                 res.into_iter().next()
@@ -153,8 +153,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl pg_worm::ToModels<#ident> for Vec<pg_worm::Row> {
-            fn to_models(&self) -> Result<Vec<#ident>, pg_worm::Error> {
+        impl pg_worm::ToModel<#ident> for Vec<pg_worm::Row> {
+            fn to_model(&self) -> Result<Vec<#ident>, pg_worm::Error> {
                 #ident::try_from_vec(self)
             }
         }

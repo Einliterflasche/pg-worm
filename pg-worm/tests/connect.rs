@@ -56,9 +56,8 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         .filter(Author::name.like("%King%")) // Matches all names which include `King`
         .join(&Book::author_id, &Author::id, JoinType::Inner)
         .build()
-        .exec()
-        .await?
-        .to_models()?;
+        .exec().await?
+        .to_model()?;
 
     assert_eq!(king_books.len(), 2);
 
