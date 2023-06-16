@@ -417,7 +417,7 @@ mod tests {
         #[column(primary_key, auto)]
         id: i64,
         name: String,
-        pseudonym: Option<String>
+        pseudonym: Option<String>,
     }
 
     #[derive(Model)]

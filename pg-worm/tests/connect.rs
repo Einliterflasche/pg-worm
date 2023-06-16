@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use pg_worm::prelude::*;
 use tokio::try_join;
 
@@ -41,7 +43,12 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Author::insert("Stephen King"),
         Author::insert("Martin Luther King"),
         Author::insert("Karl Marx"),
-        Book::insert("Foo - Part I", "The Beginning of the Crisis".to_string(), vec!["A".to_string()], 1),
+        Book::insert(
+            "Foo - Part I",
+            "The Beginning of the Crisis".to_string(),
+            vec!["A".to_string()],
+            1
+        ),
         Book::insert("Foo - Part II", None, vec![], 2),
         Book::insert("Foo - Part III", None, vec![], 3)
     )?;
@@ -54,7 +61,9 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     assert!(book.is_some());
     assert!(book.unwrap().sub_title.is_none());
 
-    // Or make more complex queries using the query builder
+    // Or make more complex queries using the query builder:
+
+    // Select all books written by an author named `King`
     let king_books: Vec<Book> = QueryBuilder::<Select>::new(Book::COLUMNS)
         .filter(Author::name.like("%King%")) // Matches all names which include `King`
         .join(&Book::author_id, &Author::id, JoinType::Inner)
@@ -62,8 +71,25 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         .exec()
         .await?
         .to_model()?;
-
     assert_eq!(king_books.len(), 2);
+
+    // Select all books with at least one pages.
+    let books_with_pages: Vec<Book> = QueryBuilder::<Select>::new(Book::COLUMNS)
+        .filter(!Book::pages.empty())
+        .build()
+        .exec()
+        .await?
+        .to_model()?;
+    assert_eq!(books_with_pages.len(), 1);
+
+    // Select all books without a subtitle.
+    let books_without_sub: Vec<Book> = QueryBuilder::<Select>::new(Book::COLUMNS)
+        .filter(Book::sub_title.null())
+        .build()
+        .exec()
+        .await?
+        .to_model()?;
+    assert_eq!(books_without_sub.len(), 2);
 
     // Or delete a book, you don't like
     Book::delete(Book::title.eq("Foo - Part II")).await;

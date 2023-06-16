@@ -1,21 +1,8 @@
 use std::{marker::PhantomData, ops::Deref};
 
-use tokio_postgres::{types::ToSql, Row};
+use tokio_postgres::types::ToSql;
 
-use crate::{Error, Filter};
-
-pub(crate) struct PgTable {
-    table_name: String,
-    columns: Vec<PgColumn>,
-}
-
-pub(crate) struct PgColumn {
-    column_name: String,
-    data_type: String,
-    is_nullable: bool,
-    is_identity: bool,
-    is_generated: bool,
-}
+use crate::Filter;
 
 /// A wrapper around the [`Column`] struct which includes
 /// the rust type of the field.
@@ -59,20 +46,6 @@ pub struct Column {
     unique: bool,
     primary_key: bool,
     generated: bool,
-}
-
-impl TryFrom<&Row> for PgColumn {
-    type Error = Error;
-
-    fn try_from(value: &Row) -> Result<Self, Self::Error> {
-        Ok(Self {
-            column_name: value.try_get("column_name")?,
-            is_nullable: value.try_get("is_nullable")?,
-            data_type: value.try_get("data_type")?,
-            is_generated: value.try_get("is_generated")?,
-            is_identity: value.try_get("is_identity")?,
-        })
-    }
 }
 
 macro_rules! impl_prop_typed_col {
@@ -148,18 +121,38 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
             vals,
         )
     }
-
-    pub fn is_null(&self) -> Filter {
-        Filter::new(format!("{} IS NULL", self.column.full_name()), Vec::new())
-    }
 }
 
 impl TypedColumn<String> {
     /// Query for values which are `LIKE val`.
+    ///
+    /// Can be used to check whether the string contains a sub-string
+    /// by querying for `MyModel::my_col.like("%sub%")`
     pub fn like(&self, val: impl Into<String>) -> Filter {
         let val: String = val.into();
 
         Filter::new(format!("{} LIKE $1", self.full_name()), vec![Box::new(val)])
+    }
+}
+
+impl<T: ToSql + Sync> TypedColumn<Option<T>> {
+    /// Check whether this column is null.
+    pub fn null(&self) -> Filter {
+        Filter::new(format!("{} IS NULL", self.full_name()), Vec::new())
+    }
+}
+
+impl<T: ToSql + Sync + Send + 'static> TypedColumn<Vec<T>> {
+    /// Check whether the array is empty using
+    /// `cardinality`.
+    pub fn empty(&self) -> Filter {
+        Filter::new(format!("cardinality({}) = 0", self.full_name()), Vec::new())
+    }
+
+    /// Check whether the array contains a given value.
+    pub fn contains(&self, val: impl Into<T>) -> Filter {
+        let val: T = val.into();
+        Filter::new(format!("$1 IN {}", self.full_name()), vec![Box::new(val)])
     }
 }
 

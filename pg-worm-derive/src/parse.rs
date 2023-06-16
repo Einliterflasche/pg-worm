@@ -2,7 +2,7 @@ use darling::{ast::Data, FromDeriveInput, FromField};
 use postgres_types::Type;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Ident, PathArguments, GenericArgument};
+use syn::{GenericArgument, Ident, PathArguments};
 
 #[derive(FromDeriveInput)]
 #[darling(attributes(table), supports(struct_named))]
@@ -29,7 +29,7 @@ pub struct ModelField {
     #[darling(skip)]
     nullable: bool,
     #[darling(default)]
-    array: bool
+    array: bool,
 }
 
 impl ModelInput {
@@ -59,7 +59,7 @@ impl ModelInput {
     /// Get an iterator over the input struct's fields
     /// but skip the auto generated ones.
     fn non_generated_fields(&self) -> impl Iterator<Item = &ModelField> {
-        self.all_fields().filter(|f| !(*f).auto)
+        self.all_fields().filter(|f| !f.auto)
     }
 
     /// Generate the SQL statement needed to create
@@ -291,12 +291,8 @@ impl ModelInput {
             .map(|f| f.ident())
             .collect::<Vec<_>>();
 
-        let field_concrete_types = self
-            .non_generated_fields()
-            .map(|f| f.ty.to_token_stream());
-        let field_generic_types = self
-            .non_generated_fields()
-            .map(|f| f.insert_arg_type());
+        let field_concrete_types = self.non_generated_fields().map(|f| f.ty.to_token_stream());
+        let field_generic_types = self.non_generated_fields().map(|f| f.insert_arg_type());
 
         quote!(
             /// Insert a new entity into the database.
@@ -372,8 +368,8 @@ impl ModelField {
             "Option" => field.nullable = true,
             // If it's a Vec<T>, set the field to be an array
             "Vec" => field.array = true,
-            _ => ()
-        } 
+            _ => (),
+        }
 
         Ok(field)
     }
@@ -418,7 +414,7 @@ impl ModelField {
                 "f32" => Type::FLOAT4,
                 "f64" => Type::FLOAT8,
                 "bool" => Type::BOOL,
-                _ => panic!("cannot map rust type to postgres type: {ty}")
+                _ => panic!("cannot map rust type to postgres type: {ty}"),
             }
         }
 
@@ -430,11 +426,14 @@ impl ModelField {
             panic!("field type must be path; no reference, impl, etc. allowed")
         };
 
-        let segment = type_path.path.segments.last()
+        let segment = type_path
+            .path
+            .segments
+            .last()
             .expect("field type must have a last segment");
         let args = &segment.arguments;
 
-        if (&segment.ident).to_string().as_str() == "Option" {
+        if segment.ident.to_string().as_str() == "Option" {
             // Extract `T` from `Option<T>`
             let PathArguments::AngleBracketed(args) = args else {
                 panic!("field of type option needs angle bracketed argument")
@@ -445,7 +444,7 @@ impl ModelField {
             let syn::Type::Path(type_path) = arg else {
                 panic!("generic arg for Option must be path")
             };
-            
+
             let ident = &type_path
                 .path
                 .segments
@@ -453,10 +452,10 @@ impl ModelField {
                 .expect("generic arg for Option must have segment")
                 .ident;
 
-            return from_type(ident)
+            return from_type(ident);
         }
 
-        if (&segment.ident).to_string().as_str() == "Vec" {
+        if segment.ident.to_string().as_str() == "Vec" {
             // Extract `T` from `Option<T>`
             let PathArguments::AngleBracketed(args) = args else {
                 panic!("field of type Vec needs angle bracketed argument")
@@ -475,7 +474,7 @@ impl ModelField {
                 .expect("generic arg for Vec must have segment")
                 .ident;
 
-            return from_type(ident)
+            return from_type(ident);
         }
 
         from_type(&segment.ident)
@@ -497,8 +496,6 @@ impl ModelField {
                 }
             };
         }
-
-
 
         // Add possible args
         arg!(self.array, "ARRAY");
