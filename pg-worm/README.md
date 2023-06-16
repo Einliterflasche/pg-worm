@@ -22,24 +22,25 @@ use tokio::try_join;
 
 #[derive(Model)]
 struct Book {
+    // An auto-generated primary key
     #[column(primary_key, auto)]
     id: i64,
     #[column(unique)]
     title: String,
     sub_title: Option<String>,
     pages: Vec<String>,
-    author_id: i64,
+    author_id: i64
 }
 
 #[derive(Model)]
 struct Author {
     #[column(primary_key, auto)]
     id: i64,
-    name: String,
+    name: String
 }
 
-#[tokio::test]
-async fn complete_procedure() -> Result<(), pg_worm::Error> {
+#[tokio::main]
+async fn main() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done once.
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
