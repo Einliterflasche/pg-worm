@@ -407,9 +407,9 @@ macro_rules! force_register {
 mod tests {
     #![allow(dead_code)]
 
-    use pg_worm::{Join, JoinType, Model};
+    use pg_worm::prelude::*;
 
-    use crate::{Filter, QueryBuilder, Select, ToQuery};
+    use crate::ToQuery;
 
     #[derive(Model)]
     #[table(table_name = "persons")]
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn table_name() {
-        assert_eq!(Book::COLUMNS[0].table_name(), "book");
+        assert_eq!(Book::table_name(), "book");
     }
 
     #[test]

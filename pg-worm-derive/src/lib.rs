@@ -2,7 +2,6 @@ mod parse;
 
 use darling::FromDeriveInput;
 use proc_macro::{self, TokenStream};
-use quote::quote;
 use syn::parse_macro_input;
 
 use parse::ModelInput;
@@ -20,145 +19,32 @@ use parse::ModelInput;
 ///      - `column_name: String`: optional. Overwrites the column name.
 #[proc_macro_derive(Model, attributes(table, column))]
 pub fn derive(input: TokenStream) -> TokenStream {
-    let opts = ModelInput::from_derive_input(&parse_macro_input!(input)).unwrap();
+    let input = ModelInput::from_derive_input(&parse_macro_input!(input)).unwrap();
 
-    let ident = opts.ident();
-
-    let table_name = opts.table_name();
-
-    // Retrieve the struct's fields
-    let fields = opts.fields().collect::<Vec<_>>();
-
-    if opts.n_fields() == 0 {
-        panic!("struct must have at least one field to become a `Model`")
-    }
-
-    let n_fields = opts.n_fields();
-
-    // Get the fields' idents
-    let field_idents = fields
-        .clone()
-        .into_iter()
-        .map(|f| f.ident())
-        .collect::<Vec<_>>();
-    let column_names = fields.iter().map(|f| f.column_name()).collect::<Vec<_>>();
-
-    let impl_insert = opts.impl_insert();
-
-    let table_creation_sql = opts.table_creation_sql();
-
-    let impl_column_consts = opts.impl_column_consts();
-
-    // Generate the needed impl code
-    let output = quote!(
-        #impl_column_consts
-
-        impl<'a> TryFrom<&'a pg_worm::Row> for #ident {
-            type Error = pg_worm::Error;
-
-            fn try_from(value: &'a pg_worm::Row) -> Result<#ident, Self::Error> {
-                // Parse each column into the corresponding field
-                Ok(#ident {
-                    #(#field_idents: value
-                        .try_get(#column_names)?
-                    ),*
-                })
-            }
-        }
-
-
-        #[pg_worm::async_trait]
-        impl Model<#ident> for #ident {
-            #[inline]
-            fn table_name() -> &'static str {
-                #table_name
-            }
-
-            #[inline]
-            fn _table_creation_sql() -> &'static str {
-                #table_creation_sql
-            }
-
-            fn columns() -> &'static [&'static pg_worm::DynCol] {
-                &#ident::COLUMNS
-            }
-
-            async fn select(filter: pg_worm::Filter) -> Vec<#ident> {
-                use pg_worm::prelude::*;
-
-                let query = QueryBuilder::<Select>::new(#ident::COLUMNS)
-                    .filter(filter)
-                    .build();
-
-                let res: Vec<#ident> = query
-                    .exec()
-                    .await
-                    .expect("failed to query")
-                    .to_model()
-                    .expect("failed to parse response to struct");
-
-                res
-            }
-
-            async fn select_one(filter: pg_worm::Filter) -> Option<#ident> {
-                use pg_worm::prelude::*;
-
-                let query = QueryBuilder::<Select>::new(#ident::COLUMNS)
-                    .filter(filter)
-                    .build();
-
-                let res: Vec<#ident> = query
-                    .exec()
-                    .await
-                    .expect("failed to query")
-                    .to_model()
-                    .expect("failed to parse response to struct");
-
-                res.into_iter().next()
-            }
-
-            async fn delete(filter: pg_worm::Filter) -> u64 {
-                use pg_worm::prelude::*;
-
-                // Build the query
-                let query = QueryBuilder::<Delete>::new(#ident::COLUMNS)
-                    .filter(filter)
-                    .build();
-
-                // Make the query
-                let rows_affected = query
-                    .exec()
-                    .await
-                    .expect("couldn't execute query");
-
-                // Return the number of rows affected
-                rows_affected
-            }
-        }
-
-        impl #ident {
-            #impl_insert
-
-            const COLUMNS: [&'static pg_worm::DynCol; #n_fields] = [
-                #(
-                    &#ident::#field_idents
-                ),*
-            ];
-
-            fn try_from_vec(values: &Vec<pg_worm::Row>) -> Result<Vec<#ident>, pg_worm::Error> {
-                values
-                    .iter()
-                    .map(|i| #ident::try_from(i))
-                    .collect()
-            }
-        }
-
-        impl pg_worm::ToModel<#ident> for Vec<pg_worm::Row> {
-            fn to_model(&self) -> Result<Vec<#ident>, pg_worm::Error> {
-                #ident::try_from_vec(self)
-            }
-        }
-    );
+    let output = input.impl_everything();
 
     output.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use darling::FromDeriveInput;
+    use syn::parse_str;
+
+    use crate::parse::ModelInput;
+
+    #[test]
+    fn test() {
+        let input = r#"
+            #[derive(Model)]
+            struct Book {
+                #[column(primary_key, auto)]
+                id: i64,
+                title: String
+            }
+        "#;
+        let tokens = parse_str(input).unwrap();
+        let parsed_input = ModelInput::from_derive_input(&tokens).unwrap();
+        let _output = parsed_input.impl_everything();
+    }
 }
