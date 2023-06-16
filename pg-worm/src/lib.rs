@@ -417,6 +417,7 @@ mod tests {
         #[column(primary_key, auto)]
         id: i64,
         name: String,
+        pseudonym: Option<String>
     }
 
     #[derive(Model)]
@@ -458,7 +459,7 @@ mod tests {
     fn table_creation_sql() {
         assert_eq!(
             Person::_table_creation_sql(),
-            "CREATE TABLE persons (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text)"
+            "CREATE TABLE persons (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text NOT NULL, pseudonym text)"
         );
     }
 

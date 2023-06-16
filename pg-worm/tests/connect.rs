@@ -7,6 +7,8 @@ struct Book {
     id: i64,
     #[column(unique)]
     title: String,
+    sub_title: Option<String>,
+    pages: Vec<String>,
     author_id: i64,
 }
 
@@ -39,9 +41,9 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Author::insert("Stephen King"),
         Author::insert("Martin Luther King"),
         Author::insert("Karl Marx"),
-        Book::insert("Foo - Part I", 1),
-        Book::insert("Foo - Part II", 2),
-        Book::insert("Foo - Part III", 3)
+        Book::insert("Foo - Part I", "The Beginning of the Crisis".to_string(), vec!["A".to_string()], 1),
+        Book::insert("Foo - Part II", None, vec![], 2),
+        Book::insert("Foo - Part III", None, vec![], 3)
     )?;
 
     let books: Vec<Book> = Book::select(Filter::all()).await;
@@ -50,6 +52,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // Or search for a specific book
     let book = Book::select_one(Book::title.like("Foo%II")).await;
     assert!(book.is_some());
+    assert!(book.unwrap().sub_title.is_none());
 
     // Or make more complex queries using the query builder
     let king_books: Vec<Book> = QueryBuilder::<Select>::new(Book::COLUMNS)

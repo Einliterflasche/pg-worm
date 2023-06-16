@@ -2,7 +2,7 @@ use darling::{ast::Data, FromDeriveInput, FromField};
 use postgres_types::Type;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Ident, PathArguments};
+use syn::{Ident, PathArguments, GenericArgument};
 
 #[derive(FromDeriveInput)]
 #[darling(attributes(table), supports(struct_named))]
@@ -28,6 +28,8 @@ pub struct ModelField {
     unique: bool,
     #[darling(skip)]
     nullable: bool,
+    #[darling(default)]
+    array: bool
 }
 
 impl ModelInput {
@@ -279,20 +281,22 @@ impl ModelInput {
             .collect::<Vec<_>>()
             .join(", ");
 
-        let column_counter = (1..=self.non_generated_fields().count())
+        let placeholders = (1..=self.non_generated_fields().count())
             .map(|i| format!("${i}"))
             .collect::<Vec<_>>()
             .join(", ");
 
-        let column_idents = self
+        let field_idents = self
             .non_generated_fields()
             .map(|f| f.ident())
             .collect::<Vec<_>>();
-        let column_concrete_types = self.non_generated_fields().map(|f| f.ty.to_token_stream());
-        let column_dtypes = self
+
+        let field_concrete_types = self
             .non_generated_fields()
-            .map(|f| f.insert_arg_type())
-            .collect::<Vec<_>>();
+            .map(|f| f.ty.to_token_stream());
+        let field_generic_types = self
+            .non_generated_fields()
+            .map(|f| f.insert_arg_type());
 
         quote!(
             /// Insert a new entity into the database.
@@ -317,19 +321,19 @@ impl ModelInput {
             /// }
             /// ```
             pub async fn insert(
-                #(#column_idents: #column_dtypes),*
+                #(#field_idents: #field_generic_types),*
             ) -> Result<(), pg_worm::Error> {
-                // Prepare sql statement
+                // Format sql statement
                 let stmt = format!(
                     "INSERT INTO {} ({}) VALUES ({})",
                     #table_name,
                     #column_names,
-                    #column_counter
+                    #placeholders
                 );
 
                 // Convert to concrete types
                 #(
-                    let #column_idents: #column_concrete_types = #column_idents.into();
+                    let #field_idents: #field_concrete_types = #field_idents.into();
                 ) *
 
                 // Retrieve the client
@@ -339,7 +343,7 @@ impl ModelInput {
                 client.execute(
                     stmt.as_str(),
                     &[
-                        #(&#column_idents),*
+                        #(&#field_idents),*
                     ]
                 ).await?;
 
@@ -363,10 +367,13 @@ impl ModelField {
         let path = &path.path;
         let last_seg = path.segments.last().expect("must provide type");
 
-        // If it's an Option<T>, set the field nullable
-        if last_seg.ident.to_string() == "Option".to_string() {
-            field.nullable = true;
-        }
+        match last_seg.ident.to_string().as_str() {
+            // If it's an Option<T>, set the field nullable
+            "Option" => field.nullable = true,
+            // If it's a Vec<T>, set the field to be an array
+            "Vec" => field.array = true,
+            _ => ()
+        } 
 
         Ok(field)
     }
@@ -389,8 +396,8 @@ impl ModelField {
 
     /// Get the corresponding column's PostgreSQL datatype.
     fn pg_datatype(&self) -> Type {
-        if let Some(dtype) = &self.dtype {
-            let ty = match dtype.to_lowercase().as_str() {
+        fn from_str(ty: &str) -> Type {
+            match ty {
                 "bool" | "boolean" => Type::BOOL,
                 "text" => Type::TEXT,
                 "int" | "integer" | "int4" => Type::INT4,
@@ -399,46 +406,79 @@ impl ModelField {
                 "real" => Type::FLOAT4,
                 "double precision" => Type::FLOAT8,
                 "bigserial" => Type::INT8,
-                _ => panic!("couldn't find postgres type `{}`", dtype),
+                _ => panic!("couldn't find postgres type `{}`", ty),
+            }
+        }
+
+        fn from_type(ty: &Ident) -> Type {
+            match ty.to_string().as_str() {
+                "String" => Type::TEXT,
+                "i32" => Type::INT4,
+                "i64" => Type::INT8,
+                "f32" => Type::FLOAT4,
+                "f64" => Type::FLOAT8,
+                "bool" => Type::BOOL,
+                _ => panic!("cannot map rust type to postgres type: {ty}")
+            }
+        }
+
+        if let Some(dtype) = &self.dtype {
+            return from_str(dtype.as_str());
+        }
+
+        let syn::Type::Path(type_path) = &self.ty else {
+            panic!("field type must be path; no reference, impl, etc. allowed")
+        };
+
+        let segment = type_path.path.segments.last()
+            .expect("field type must have a last segment");
+        let args = &segment.arguments;
+
+        if (&segment.ident).to_string().as_str() == "Option" {
+            // Extract `T` from `Option<T>`
+            let PathArguments::AngleBracketed(args) = args else {
+                panic!("field of type option needs angle bracketed argument")
+            };
+            let GenericArgument::Type(arg) = args.args.first().expect("Option needs to have generic argument") else {
+                panic!("generic argument for Option must be concrete type")
+            };
+            let syn::Type::Path(type_path) = arg else {
+                panic!("generic arg for Option must be path")
+            };
+            
+            let ident = &type_path
+                .path
+                .segments
+                .first()
+                .expect("generic arg for Option must have segment")
+                .ident;
+
+            return from_type(ident)
+        }
+
+        if (&segment.ident).to_string().as_str() == "Vec" {
+            // Extract `T` from `Option<T>`
+            let PathArguments::AngleBracketed(args) = args else {
+                panic!("field of type Vec needs angle bracketed argument")
+            };
+            let GenericArgument::Type(arg) = args.args.first().expect("Vec needs to have generic argument") else {
+                panic!("generic argument for Vec must be concrete type")
+            };
+            let syn::Type::Path(type_path) = arg else {
+                panic!("generic arg for Vec must be path")
             };
 
-            return ty;
+            let ident = &type_path
+                .path
+                .segments
+                .first()
+                .expect("generic arg for Vec must have segment")
+                .ident;
+
+            return from_type(ident)
         }
 
-        match &self.ty {
-            syn::Type::Path(type_path) => {
-                let segment = type_path.path.segments.last().unwrap();
-                // Support Option<T> as nullable T
-                if segment.ident.to_string().as_str() == "Option" {
-                    let args = &segment.arguments;
-                    let PathArguments::AngleBracketed(angle_args) = args else {
-                        panic!("weird option. should have angle brackets")
-                    };
-                }
-
-                match type_path
-                    .path
-                    .segments
-                    .last().unwrap()
-                    .ident.to_string().as_str() {
-                        "String" => Type::TEXT,
-                        "i32" => Type::INT4,
-                        "i64" => Type::INT8,
-                        "f32" => Type::FLOAT4,
-                        "f64" => Type::FLOAT8,
-                        "bool" => Type::BOOL,
-                        _ => todo!(
-                            "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = '<DataType>']`", 
-                            self.ident().to_string()
-                        )
-                    }
-                },
-            syn::Type::Reference(_) => panic!("field {:?} may not be reference", self.ident().to_string()),
-            _ => todo!(
-                "cannot guess postgres type for field {:?}, please provide via attribute: `#[column(dtype = 'DataType']`", 
-                self.ident().to_string()
-            )
-        }
+        from_type(&segment.ident)
     }
 
     /// Get the SQL representing the column needed
@@ -458,10 +498,14 @@ impl ModelField {
             };
         }
 
+
+
         // Add possible args
+        arg!(self.array, "ARRAY");
         arg!(self.primary_key, "PRIMARY KEY");
         arg!(self.auto, "GENERATED ALWAYS AS IDENTITY");
         arg!(self.unique, "UNIQUE");
+        arg!(!(self.primary_key || self.nullable), "NOT NULL");
 
         // Join the args, seperated by a space and return them
         args.join(" ")
