@@ -23,7 +23,7 @@ struct Author {
 
 #[tokio::test]
 async fn complete_procedure() -> Result<(), pg_worm::Error> {
-    // First create a connection. This can be only done _once_.
+    // First create a connection. This can be only done once.
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
     // Then, register the model with the pg_worm client.
@@ -43,16 +43,12 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Author::insert("Stephen King"),
         Author::insert("Martin Luther King"),
         Author::insert("Karl Marx"),
-        Book::insert(
-            "Foo - Part I",
-            "The Beginning of the Crisis".to_string(),
-            vec!["A".to_string()],
-            1
-        ),
+        Book::insert("Foo - Part I", "Subtitle".to_string(), vec!["Page 1".to_string()], 1),
         Book::insert("Foo - Part II", None, vec![], 2),
         Book::insert("Foo - Part III", None, vec![], 3)
     )?;
 
+    // Let's start with a simple query for all books.
     let books: Vec<Book> = Book::select(Filter::all()).await;
     assert_eq!(books.len(), 3);
 
@@ -68,8 +64,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         .filter(Author::name.like("%King%")) // Matches all names which include `King`
         .join(&Book::author_id, &Author::id, JoinType::Inner)
         .build()
-        .exec()
-        .await?
+        .exec().await?
         .to_model()?;
     assert_eq!(king_books.len(), 2);
 
