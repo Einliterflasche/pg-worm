@@ -1,9 +1,11 @@
-use super::{DynCol, ToQuery};
+use std::ops::Deref;
+
+use crate::Column;
 
 /// A struct representing SQL joins.
 pub struct Join {
-    column: &'static DynCol,
-    on_column: &'static DynCol,
+    column: &'static dyn Deref<Target = Column>,
+    on_column: &'static dyn Deref<Target = Column>,
     join_type: JoinType,
 }
 
@@ -16,17 +18,15 @@ pub enum JoinType {
 }
 
 impl Join {
-    pub const fn new(c1: &'static DynCol, c2: &'static DynCol, ty: JoinType) -> Join {
+    pub const fn new(c1: &'static dyn Deref<Target = Column>, c2: &'static dyn Deref<Target = Column>, ty: JoinType) -> Join {
         Self {
             column: c1,
             on_column: c2,
             join_type: ty,
         }
     }
-}
 
-impl ToQuery for Join {
-    fn to_sql(&self) -> String {
+    pub fn to_sql(&self) -> String {
         let join_type: &'static str = match self.join_type {
             JoinType::Inner => "INNER",
             JoinType::Outer => "OUTER",

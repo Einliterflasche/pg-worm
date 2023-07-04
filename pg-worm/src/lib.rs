@@ -158,6 +158,8 @@ extern crate self as pg_worm;
 
 pub mod query;
 
+use std::ops::Deref;
+
 pub use async_trait::async_trait;
 pub use pg::{NoTls, Row};
 pub use pg_worm_derive::Model;
@@ -172,9 +174,10 @@ use thiserror::Error;
 
 pub mod prelude {
     pub use crate::{
-        connect, force_register, register, Delete, Filter, Join, JoinType, Model, NoTls,
-        QueryBuilder, Select, ToModel,
+        connect, force_register, register, Filter, Join, JoinType, Model, NoTls, Query, Column
     };
+
+    pub use std::ops::Deref;
 }
 
 #[derive(Error, Debug)]
@@ -195,14 +198,14 @@ pub enum Error {
 /// It provides the ORM functionality.
 ///
 #[async_trait]
-pub trait Model<T>: for<'a> TryFrom<&'a Row, Error = Error> {
+pub trait Model<T>: TryFrom<Row, Error = Error> {
     /// This is a library function needed to derive the `Model`trait.
     ///
     /// *_DO NOT USE_*
     #[must_use]
     fn _table_creation_sql() -> &'static str;
 
-    fn columns() -> &'static [&'static DynCol];
+    fn columns() -> &'static [&'static dyn Deref<Target = Column>];
 
     fn table_name() -> &'static str;
 
@@ -213,31 +216,7 @@ pub trait Model<T>: for<'a> TryFrom<&'a Row, Error = Error> {
     /// a `Result` but panics instead
     ///  - if there is no database connection
     #[must_use]
-    async fn select(filter: Filter) -> Vec<T>;
-
-    /// Retrieve the first entity from the database.
-    /// Returns `None` if there are no entities present.
-    ///
-    /// # Panics
-    /// For the sake of convenience this function does not return
-    /// a `Result` but panics instead
-    ///  - if there is no database connection
-    #[must_use]
-    async fn select_one(filter: Filter) -> Option<T>;
-
-    /// Delete any entity wich matches the filter.
-    ///
-    /// Returns the number of rows affected.
-    ///
-    /// # Panic
-    /// For the sake of convenience this function does not return
-    /// a `Result` but panics instead
-    ///  - if there is no database connection
-    async fn delete(filter: Filter) -> u64;
-}
-
-pub trait ToModel<M: Model<M>> {
-    fn to_model(&self) -> Result<Vec<M>, pg_worm::Error>;
+    fn select() -> SelectBuilder<T>;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();
@@ -247,6 +226,7 @@ static CLIENT: OnceCell<Client> = OnceCell::new();
 ///
 /// **This is a private library function needed to derive
 /// the `Model` trait. Do not use!**
+#[doc(hidden)]
 #[inline]
 pub fn _get_client() -> Result<&'static Client, Error> {
     if let Some(client) = CLIENT.get() {
@@ -328,7 +308,7 @@ macro_rules! connect {
 /// ```
 pub async fn register_model<M: Model<M>>() -> Result<(), Error>
 where
-    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>,
+    Error: From<<M as TryFrom<Row>>::Error>,
 {
     let client = _get_client()?;
     client.batch_execute(M::_table_creation_sql()).await?;
@@ -340,7 +320,7 @@ where
 /// already exists, it is dropped instead of returning an error.
 pub async fn force_register_model<M: Model<M>>() -> Result<(), Error>
 where
-    for<'a> Error: From<<M as TryFrom<&'a Row>>::Error>,
+    Error: From<<M as TryFrom<Row>>::Error>,
 {
     let client = _get_client()?;
     let query = format!(
@@ -401,95 +381,4 @@ macro_rules! force_register {
             $($crate::force_register_model::<$x>()),*
         )
     };
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(dead_code)]
-
-    use pg_worm::prelude::*;
-
-    use crate::ToQuery;
-
-    #[derive(Model)]
-    #[table(table_name = "persons")]
-    struct Person {
-        #[column(primary_key, auto)]
-        id: i64,
-        name: String,
-        pseudonym: Option<String>,
-    }
-
-    #[derive(Model)]
-    struct Book {
-        #[column(primary_key, auto)]
-        id: i64,
-        title: String,
-        author_id: i64,
-    }
-
-    #[test]
-    fn table_name() {
-        assert_eq!(Book::table_name(), "book");
-    }
-
-    #[test]
-    fn join_sql() {
-        assert_eq!(
-            Join::new(&Book::author_id, &Person::id, JoinType::Inner).to_sql(),
-            "INNER JOIN persons ON book.author_id = persons.id"
-        )
-    }
-
-    #[test]
-    fn select_sql() {
-        let q = QueryBuilder::<Select>::new([&Book::title])
-            .filter(Person::name.like("%a%"))
-            .join(&Book::author_id, &Person::id, JoinType::Inner)
-            .limit(4)
-            .build();
-
-        assert_eq!(
-            q.stmt(),
-            "SELECT book.title FROM book INNER JOIN persons ON book.author_id = persons.id WHERE persons.name LIKE $1 LIMIT 4"
-        )
-    }
-
-    #[test]
-    fn table_creation_sql() {
-        assert_eq!(
-            Person::_table_creation_sql(),
-            "CREATE TABLE persons (id int8 PRIMARY KEY GENERATED ALWAYS AS IDENTITY, name text NOT NULL, pseudonym text)"
-        );
-    }
-
-    #[test]
-    fn limit_to_query() {
-        let limit = Some(4usize);
-        assert_eq!(limit.to_sql(), "LIMIT 4");
-    }
-
-    #[test]
-    fn empty_limit_tp_query() {
-        let limit: Option<usize> = None;
-        assert_eq!(limit.to_sql(), "");
-    }
-
-    #[test]
-    fn empty_filter_to_query() {
-        let filter = Filter::all();
-        assert_eq!(filter.to_sql(), "");
-    }
-
-    #[test]
-    fn eq_filter_to_query() {
-        let filter = Book::id.eq(5);
-        assert_eq!(filter.to_sql(), "WHERE book.id = $1");
-    }
-
-    #[test]
-    fn filter_and() {
-        let filter = Book::id.eq(4) & Book::id.eq(5);
-        assert_eq!(filter.to_sql(), "WHERE book.id = $1 AND book.id = $2");
-    }
 }

@@ -13,12 +13,12 @@ use tokio_postgres::types::ToSql;
 /// and arguments. The statement should include placeholders
 /// in the form of `$1`, `$2` and so on.
 pub struct Filter {
-    args: Vec<Box<dyn ToSql + Sync + Send>>,
+    args: Vec<Box<dyn ToSql + Sync>>,
     stmt: String,
 }
 
 impl Filter {
-    pub(crate) fn new(stmt: impl Into<String>, args: Vec<Box<dyn ToSql + Sync + Send>>) -> Filter {
+    pub(crate) fn new(stmt: impl Into<String>, args: Vec<Box<dyn ToSql + Sync>>) -> Filter {
         Filter {
             stmt: stmt.into(),
             args,
@@ -33,30 +33,25 @@ impl Filter {
     /// Access the filter's raw sql statement.
     ///
     #[inline]
-    pub fn _stmt(&self) -> &str {
-        self.stmt.as_str()
+    pub fn stmt(&self) -> &str {
+        &self.stmt
     }
 
     #[inline]
-    pub fn _args(&self) -> &Vec<Box<dyn ToSql + Sync + Send>> {
+    pub fn args(&self) -> &Vec<Box<dyn ToSql + Sync>> {
         &self.args
     }
 
-    #[inline]
-    pub fn args(self) -> Vec<Box<dyn ToSql + Sync + Send>> {
-        self.args
-    }
-
     fn combine_with_sep(mut f1: Filter, f2: Filter, sep: &str) -> Filter {
-        if f1._stmt().trim().is_empty() {
+        if f1.stmt().trim().is_empty() {
             return f2;
         }
 
-        if f2._stmt().trim().is_empty() {
+        if f2.stmt().trim().is_empty() {
             return f1;
         }
 
-        let mut left_stmt = f1.stmt + sep;
+        let mut left_stmt = f1.stmt.to_string() + sep;
         let mut right_stmt = f2.stmt;
 
         while let Some(i) = right_stmt.find('$') {
@@ -91,7 +86,7 @@ impl Filter {
 
         f1.args.extend(f2.args);
 
-        Filter::new(left_stmt, f1.args)
+        Filter::new(&left_stmt, f1.args)
     }
 
     #[inline]
@@ -104,7 +99,7 @@ impl Filter {
     }
 }
 
-impl BitAnd for Filter {
+impl<'a> BitAnd for Filter {
     type Output = Filter;
 
     fn bitand(self, rhs: Self) -> Self::Output {
@@ -112,7 +107,7 @@ impl BitAnd for Filter {
     }
 }
 
-impl BitOr for Filter {
+impl<'a> BitOr for Filter {
     type Output = Filter;
 
     fn bitor(self, rhs: Self) -> Self::Output {
@@ -120,10 +115,10 @@ impl BitOr for Filter {
     }
 }
 
-impl Not for Filter {
+impl<'a> Not for Filter {
     type Output = Filter;
 
     fn not(self) -> Self::Output {
-        Filter::new(format!("NOT ({})", self.stmt), self.args)
+        Filter::new(&format!("NOT ({})", self.stmt), self.args)
     }
 }

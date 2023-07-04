@@ -84,34 +84,17 @@ impl ModelInput {
         let columns = self.impl_columns();
         let insert = self.impl_insert();
         let model = self.impl_model();
-        let to_model = self.impl_to_model();
 
         quote!(
-             impl #ident {
-                 #column_consts
-                 #insert
-                 #columns
-             }
-
-
-             #try_from_row
-             #model
-             #to_model
-        )
-    }
-
-    fn impl_to_model(&self) -> TokenStream {
-        let ident = self.ident();
-
-        quote!(
-            impl pg_worm::ToModel<#ident> for Vec<pg_worm::Row> {
-                fn to_model(&self) -> Result<Vec<#ident>, pg_worm::Error> {
-                    self
-                        .iter()
-                        .map(|i| #ident::try_from(i))
-                        .collect()
-                }
+            impl #ident {
+                #column_consts
+                #insert
+                #columns
             }
+
+
+            #try_from_row
+            #model
         )
     }
 
@@ -123,15 +106,11 @@ impl ModelInput {
         let creation_sql = self.table_creation_sql();
 
         let select = self.impl_select();
-        let select_one = self.impl_select_one();
-        let delete = self.impl_delete();
 
         quote!(
             #[pg_worm::async_trait]
             impl pg_worm::Model<#ident> for #ident {
                 #select
-                #select_one
-                #delete
 
                 fn table_name() -> &'static str {
                     #table_name
@@ -141,32 +120,9 @@ impl ModelInput {
                     #creation_sql
                 }
 
-                fn columns() -> &'static [&'static pg_worm::DynCol] {
+                fn columns() -> &'static [&'static dyn Deref<Target = Column>] {
                     &#ident::COLUMNS
                 }
-            }
-        )
-    }
-
-    /// Generate the code for
-    /// the delete method.
-    fn impl_delete(&self) -> TokenStream {
-        let ident = self.ident();
-
-        quote!(
-            async fn delete(filter: pg_worm::Filter) -> u64 {
-                use pg_worm::prelude::*;
-
-                let query = QueryBuilder::<Delete>::new(#ident::COLUMNS)
-                    .filter(filter)
-                    .build();
-
-                let res = query
-                    .exec()
-                    .await
-                    .expect("couldn't make query");
-
-                res
             }
         )
     }
@@ -177,45 +133,8 @@ impl ModelInput {
         let ident = self.ident();
 
         quote!(
-            async fn select(filter: pg_worm::Filter) -> Vec<#ident> {
-                use pg_worm::prelude::*;
-
-                let query = QueryBuilder::<Select>::new(#ident::COLUMNS)
-                    .filter(filter)
-                    .build();
-
-                let res = query
-                    .exec()
-                    .await
-                    .expect("couldn't make query")
-                    .to_model()
-                    .expect("couldn't parse response to struct");
-
-                res
-            }
-        )
-    }
-
-    /// Generate the code for `select_one`
-    fn impl_select_one(&self) -> TokenStream {
-        let ident = self.ident();
-
-        quote!(
-            async fn select_one(filter: pg_worm::Filter) -> Option<#ident> {
-                use pg_worm::prelude::*;
-
-                let query = QueryBuilder::<Select>::new(#ident::COLUMNS)
-                    .filter(filter)
-                    .build();
-
-                let res: Vec<#ident> = query
-                    .exec()
-                    .await
-                    .expect("couldn't make query")
-                    .to_model()
-                    .expect("couldn't parse response to struct");
-
-                res.into_iter().next()
+            fn select() -> pg_worm::SelectBuilder<#ident> {
+                pg_worm::Query::select(#ident::COLUMNS)
             }
         )
     }
@@ -228,10 +147,10 @@ impl ModelInput {
         let column_names = self.all_fields().map(|i| i.column_name());
 
         quote!(
-            impl<'a> TryFrom<&'a pg_worm::Row> for #ident {
+            impl TryFrom<pg_worm::Row> for #ident {
                 type Error = pg_worm::Error;
 
-                fn try_from(row: &'a pg_worm::Row) -> Result<#ident, Self::Error> {
+                fn try_from(row: pg_worm::Row) -> Result<#ident, Self::Error> {
                     let res = #ident {
                         #(
                             #field_idents: row.try_get(#column_names)?
@@ -252,7 +171,7 @@ impl ModelInput {
         let n_fields = self.all_fields().count();
 
         quote!(
-            pub const COLUMNS: [&'static pg_worm::DynCol; #n_fields] = [
+            pub const COLUMNS: [&'static dyn Deref<Target = Column>; #n_fields] = [
                 #(
                     &#ident::#field_idents
                 ),*

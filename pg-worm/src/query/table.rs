@@ -113,7 +113,7 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
         // Convert values to needed type
         let vals = values
             .into_iter()
-            .map(|i| Box::new(i.into()) as Box<(dyn ToSql + Send + Sync + 'static)>)
+            .map(|i| Box::new(i.into()) as Box<(dyn ToSql + Sync + 'static)>)
             .collect::<Vec<_>>();
 
         Filter::new(
@@ -160,6 +160,12 @@ impl<T: ToSql + Sync> Deref for TypedColumn<T> {
     type Target = Column;
 
     fn deref(&self) -> &Self::Target {
+        &self.column
+    }
+}
+
+impl<T: ToSql + Sync> AsRef<Column> for TypedColumn<T> {
+    fn as_ref(&self) -> &Column {
         &self.column
     }
 }
