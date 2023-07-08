@@ -18,7 +18,11 @@ pub enum JoinType {
 }
 
 impl Join {
-    pub const fn new(c1: &'static dyn Deref<Target = Column>, c2: &'static dyn Deref<Target = Column>, ty: JoinType) -> Join {
+    pub const fn new(
+        c1: &'static dyn Deref<Target = Column>,
+        c2: &'static dyn Deref<Target = Column>,
+        ty: JoinType,
+    ) -> Join {
         Self {
             column: c1,
             on_column: c2,

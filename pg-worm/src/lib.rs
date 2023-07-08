@@ -157,7 +157,7 @@ use thiserror::Error;
 
 pub mod prelude {
     pub use crate::{
-        connect, force_register, register, Filter, Join, JoinType, Model, NoTls, Query, Column
+        connect, force_register, register, Column, Filter, Join, JoinType, Model, NoTls, Query,
     };
 
     pub use std::ops::Deref;
@@ -199,8 +199,9 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     /// For the sake of convenience this function does not return
     /// a `Result` but panics instead
     ///  - if there is no database connection
-    #[must_use]
-    fn select() -> SelectBuilder<T>;
+    fn select() -> SelectBuilder<Vec<T>>;
+
+    fn select_one() -> SelectBuilder<Option<T>>;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();

@@ -133,7 +133,11 @@ impl ModelInput {
         let ident = self.ident();
 
         quote!(
-            fn select() -> pg_worm::SelectBuilder<#ident> {
+            fn select() -> pg_worm::SelectBuilder<Vec<#ident>> {
+                pg_worm::Query::select(#ident::COLUMNS)
+            }
+
+            fn select_one() -> pg_worm::SelectBuilder<Option<#ident>> {
                 pg_worm::Query::select(#ident::COLUMNS)
             }
         )

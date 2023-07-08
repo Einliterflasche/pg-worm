@@ -12,6 +12,7 @@ use tokio_postgres::types::ToSql;
 /// Stores the statement
 /// and arguments. The statement should include placeholders
 /// in the form of `$1`, `$2` and so on.
+#[must_use]
 pub struct Filter {
     args: Vec<Box<dyn ToSql + Sync>>,
     stmt: String,
@@ -47,7 +48,7 @@ impl Filter {
         self.args
     }
 
-    fn combine_with_sep(mut f1: Filter, f2: Filter, sep: &str) -> Filter {
+    fn combine_with_sep(mut f1: Filter, mut f2: Filter, sep: &str) -> Filter {
         if f1.stmt().trim().is_empty() {
             return f2;
         }
@@ -56,42 +57,11 @@ impl Filter {
             return f1;
         }
 
-        let mut left_stmt = f1.stmt.to_string() + sep;
-        let mut right_stmt = f2.stmt;
+        f1.stmt.push_str(sep);
+        f1.stmt.push_str(&f2.stmt);
+        f1.args.append(&mut f2.args);
 
-        while let Some(i) = right_stmt.find('$') {
-            // Compute number of digits of the current placeholder number
-            let mut digs: usize = 0usize;
-            loop {
-                let slice = &right_stmt[i + 1 + digs..];
-                if let Some(c) = slice.chars().next() {
-                    if c.is_numeric() {
-                        digs += 1;
-                        continue;
-                    }
-                }
-                break;
-            }
-
-            // Parse the number
-            let num: usize = right_stmt[i + 1..=i + digs].parse().unwrap();
-
-            // Add everything before the number to the left stmt
-            // assert!(curr <= i, "!{curr} <= {i}");
-            left_stmt.push_str(&right_stmt[..=i]);
-            // Add the new number to the left statement
-            left_stmt.push_str(&format!("{}", num + f1.args.len()));
-            // Repeat for the rest of the placeholders
-            let new_start = i + digs + 1;
-            right_stmt = right_stmt[new_start..].to_string();
-        }
-
-        // Add rest of the string
-        left_stmt += &right_stmt;
-
-        f1.args.extend(f2.args);
-
-        Filter::new(&left_stmt, f1.args)
+        Filter::new(f1.stmt, f1.args)
     }
 
     #[inline]
@@ -99,12 +69,37 @@ impl Filter {
         if self.stmt.trim().is_empty() {
             String::new()
         } else {
-            format!("WHERE {}", self.stmt)
+            // Replace question marks with numbered dollar signs
+            let with_question_marks = format!("WHERE {}", self.stmt);
+
+            Filter::question_mark_to_numbered_dollar(with_question_marks)
         }
+    }
+
+    fn question_mark_to_numbered_dollar(query: String) -> String {
+        let mut res = String::with_capacity(query.len() + 10);
+
+        // e.g. "WHERE ? < ?" -> "WHERE $1 < $2"
+        let mut last_index = 0;
+        let mut counter = 1;
+        for (index, _) in query.match_indices('?') {
+            // Push everything until the question mark
+            res.push_str(&query[last_index..index]);
+            // Push dollar sign with number
+            res.push_str(&format!("${counter}"));
+            // Update last index and counter
+            last_index = index + 1;
+            counter += 1;
+        }
+
+        // Push the tail
+        res.push_str(&query[last_index..]);
+
+        res
     }
 }
 
-impl<'a> BitAnd for Filter {
+impl BitAnd for Filter {
     type Output = Filter;
 
     fn bitand(self, rhs: Self) -> Self::Output {
@@ -112,7 +107,7 @@ impl<'a> BitAnd for Filter {
     }
 }
 
-impl<'a> BitOr for Filter {
+impl BitOr for Filter {
     type Output = Filter;
 
     fn bitor(self, rhs: Self) -> Self::Output {
@@ -120,10 +115,41 @@ impl<'a> BitOr for Filter {
     }
 }
 
-impl<'a> Not for Filter {
+impl Not for Filter {
     type Output = Filter;
 
-    fn not(self) -> Self::Output {
-        Filter::new(&format!("NOT ({})", self.stmt), self.args)
+    fn not(mut self) -> Self::Output {
+        self.stmt = format!("NOT ({})", self.stmt);
+
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Filter;
+
+    #[test]
+    fn question_marks_to_numbered_dollar() {
+        let input = "WHERE ? < ?";
+        assert_eq!(
+            Filter::question_mark_to_numbered_dollar(input.into()),
+            "WHERE $1 < $2"
+        )
+    }
+
+    #[test]
+    fn question_marks_to_numbered_dollar_empty() {
+        let input = "";
+        assert_eq!(Filter::question_mark_to_numbered_dollar(input.into()), "")
+    }
+
+    #[test]
+    fn question_marks_to_numbered_dollar_none() {
+        let input = "WHERE A < B";
+        assert_eq!(
+            Filter::question_mark_to_numbered_dollar(input.into()),
+            "WHERE A < B"
+        )
     }
 }

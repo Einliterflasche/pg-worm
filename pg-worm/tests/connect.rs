@@ -43,14 +43,32 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Author::insert("Stephen King"),
         Author::insert("Martin Luther King"),
         Author::insert("Karl Marx"),
-        Book::insert("Foo - Part I", "Subtitle".to_string(), vec!["Page 1".to_string()], 1),
+        Book::insert(
+            "Foo - Part I",
+            "Subtitle".to_string(),
+            vec!["Page 1".to_string()],
+            1
+        ),
         Book::insert("Foo - Part II", None, vec![], 2),
         Book::insert("Foo - Part III", None, vec![], 3)
     )?;
 
     // Let's start with a simple query for all books.
-    let books = Book::select()
+    let all_books = Book::select().await?;
+    assert_eq!(all_books.len(), 3);
+
+    // Or select based on a condition
+    let books_with_subtitle = Book::select().filter(!Book::sub_title.null()).await?;
+    assert_eq!(books_with_subtitle.len(), 1);
+
+    // You can do boolean logic using filters
+    let books_with_subtitle_and_content = Book::select()
+        .filter(!Book::sub_title.null() & !Book::pages.empty())
         .await?;
+    assert_eq!(books_with_subtitle_and_content.len(), 1);
+
+    let first_book = Book::select_one().filter(Book::id.eq(1)).await?;
+    assert!(first_book.is_some());
 
     Ok(())
 }

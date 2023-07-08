@@ -98,7 +98,7 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
             return Filter::all();
         }
 
-        // Generate the placeholders for the query
+        // Generate placeholders for the query
         // like $1, $2, ...
         let placeholders = (1..=values.len())
             .map(|i| format!("${i}"))
@@ -118,6 +118,26 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
     }
 }
 
+macro_rules! impl_fn_op {
+    ($id:ident, $sep:literal) => {
+        pub fn $id(&self, val: impl Into<T>) -> Filter {
+            let val: T = val.into();
+
+            Filter::new(
+                format!("{} {} $1", self.full_name(), $sep),
+                vec![Box::new(val)],
+            )
+        }
+    };
+}
+
+impl<T: PartialOrd + ToSql + Sync + 'static> TypedColumn<T> {
+    impl_fn_op!(gt, '>');
+    impl_fn_op!(gte, ">=");
+    impl_fn_op!(lt, '<');
+    impl_fn_op!(lte, "<=");
+}
+
 impl TypedColumn<String> {
     /// Query for values which are `LIKE val`.
     ///
@@ -133,7 +153,12 @@ impl TypedColumn<String> {
 impl<T: ToSql + Sync> TypedColumn<Option<T>> {
     /// Check whether this column is null.
     pub fn null(&self) -> Filter {
-        Filter::new(format!("{} IS NULL", self.full_name()), Vec::new())
+        Filter::new(format!("{} IS NULL", self.full_name()), vec![])
+    }
+
+    /// Check whether this column is not null
+    pub fn not_null(&self) -> Filter {
+        !self.null()
     }
 }
 
@@ -141,13 +166,18 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<Vec<T>> {
     /// Check whether the array is empty using
     /// `cardinality`.
     pub fn empty(&self) -> Filter {
-        Filter::new(format!("cardinality({}) = 0", self.full_name()), Vec::new())
+        Filter::new(format!("cardinality({}) = 0", self.full_name()), vec![])
+    }
+
+    ///
+    pub fn not_empty(&self) -> Filter {
+        !self.empty()
     }
 
     /// Check whether the array contains a given value.
     pub fn contains(&self, val: impl Into<T>) -> Filter {
         let val: T = val.into();
-        Filter::new(format!("$1 IN {}", self.full_name()), vec![Box::new(val)])
+        Filter::new(format!("? IN {}", self.full_name()), vec![Box::new(val)])
     }
 }
 
