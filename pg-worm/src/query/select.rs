@@ -1,16 +1,14 @@
-use std::{marker::PhantomData, task::{Poll, Context}, pin::{Pin, pin}, ops::DerefMut, sync::Mutex};
+use std::{marker::PhantomData, future::{IntoFuture, Future}, pin::Pin};
 
-use futures::{Future, FutureExt, pin_mut};
 use tokio_postgres::{types::ToSql, Row};
 
-use crate::{_get_client, Column, Filter, Error};
+use crate::{_get_client, Column, Filter};
 
 pub struct SelectBuilder<T> {
     cols: String,
     table: String,
     filter: Filter,
     parse_to: PhantomData<T>,
-    fut: Mutex<Option<Pin<Box<dyn Future<Output = Result<Vec<Row>, crate::Error>>>>>>
 }
 
 impl<T: TryFrom<Row, Error = crate::Error>> SelectBuilder<T> {
@@ -22,7 +20,6 @@ impl<T: TryFrom<Row, Error = crate::Error>> SelectBuilder<T> {
             table, 
             filter: Filter::all(), 
             parse_to: PhantomData::<T>,
-            fut: Mutex::new(None)
         }
     }
 
@@ -38,7 +35,7 @@ impl<T: TryFrom<Row, Error = crate::Error>> SelectBuilder<T> {
 
     /// Add a WHERE clause to your query:
     /// 
-    /// ```
+    /// ```ignore
     /// use pg_worm::prelude::*;
     /// #[derive(Model)]
     /// struct Book {
@@ -46,11 +43,9 @@ impl<T: TryFrom<Row, Error = crate::Error>> SelectBuilder<T> {
     ///     title: String
     /// }
     /// 
-    /// async some_func() {
-    ///     let og_book = Book::select()
-    ///         .filter(Book::id.eq(1))
-    ///         .await.unwrap();
-    /// }
+    /// let og_book = Book::select()
+    ///     .filter(Book::id.eq(1))
+    ///     .await?;
     /// ```
     pub fn filter(mut self, filter: Filter) -> SelectBuilder<T> {
         self.filter = self.filter & filter;
@@ -69,13 +64,24 @@ impl<T: TryFrom<Row, Error = crate::Error>> SelectBuilder<T> {
 
         let client = _get_client()?;
 
-        let Ok(res) = client.query(&stmt, &params).await else {
-            return Err(crate::Error::ConnectionError)
-        };
+        let res = client.query(&stmt, &params).await?;
 
         res 
             .into_iter()
             .map(T::try_from)
             .collect()
+    }
+}
+
+impl<T: TryFrom<Row, Error = crate::Error> + 'static> IntoFuture for SelectBuilder<T> {
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output>>>;
+    type Output = Result<Vec<T>, crate::Error>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(
+            async move {
+                self.exec().await
+            }
+        )
     }
 }

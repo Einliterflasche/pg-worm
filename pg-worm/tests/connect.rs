@@ -49,7 +49,8 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     )?;
 
     // Let's start with a simple query for all books.
-    let books = Book::select().exec().await;
+    let books = Book::select()
+        .await?;
 
     Ok(())
 }

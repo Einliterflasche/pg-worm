@@ -16,7 +16,7 @@ use crate::Filter;
 /// # Example
 ///
 /// ```
-/// use pg_worm::Model;
+/// use pg_worm::prelude::*;
 ///
 /// #[derive(Model)]
 /// struct Foo {
@@ -75,11 +75,6 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
             column: Column::new(table_name, column_name),
             rs_type: PhantomData::<T>,
         }
-    }
-
-    /// Get the column's name
-    pub const fn name(&self) -> &'static str {
-        self.column.column_name
     }
 
     impl_prop_typed_col!(nullable, unique, primary_key, generated);
@@ -200,7 +195,7 @@ impl Column {
     /// # Example
     ///
     /// ```
-    /// use pg_worm::Model;
+    /// use pg_worm::prelude::*;
     ///
     /// #[derive(Model)]
     /// struct Foo {

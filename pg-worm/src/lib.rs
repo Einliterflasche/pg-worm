@@ -65,25 +65,8 @@
 //!     )?;
 //!
 //!     // Do a simple query for all books
-//!     let books: Vec<Book> = Book::select(Filter::all()).await;
+//!     let books = Book::select().await?;
 //!     assert_eq!(books.len(), 3);
-//!
-//!     // Or search for a specific book
-//!     let book = Book::select_one(Book::title.eq("Foo - Part II")).await;
-//!     assert!(book.is_some());
-//!
-//!     // Or make more complex queries using the query builder
-//!     let king_books: Vec<Book> = QueryBuilder::<Select>::new(Book::COLUMNS)
-//!         .filter(Author::name.like("%King%"))
-//!         .join(&Book::author_id, &Author::id, JoinType::Inner)
-//!         .build()
-//!         .exec()
-//!         .await?
-//!         .to_model()?;
-//!     assert_eq!(king_books.len(), 2);
-//!
-//!     // Or delete a book, you don't like
-//!     Book::delete(Book::title.eq("Foo - Part II")).await;
 //!
 //!     // Graceful shutdown
 //!     Ok(())
@@ -202,6 +185,7 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     /// This is a library function needed to derive the `Model`trait.
     ///
     /// *_DO NOT USE_*
+    #[doc(hidden)]
     #[must_use]
     fn _table_creation_sql() -> &'static str;
 

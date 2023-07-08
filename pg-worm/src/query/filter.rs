@@ -42,6 +42,11 @@ impl Filter {
         &self.args
     }
 
+    #[inline]
+    pub fn take_args(self) -> Vec<Box<dyn ToSql + Sync>> {
+        self.args
+    }
+
     fn combine_with_sep(mut f1: Filter, f2: Filter, sep: &str) -> Filter {
         if f1.stmt().trim().is_empty() {
             return f2;
