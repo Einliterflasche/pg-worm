@@ -6,15 +6,7 @@ use std::{
 
 use tokio_postgres::{types::ToSql, Row};
 
-use crate::{Column, Filter, _get_client};
-
-macro_rules! conv_params {
-    ($id:expr) => {
-        $id.iter()
-            .map(|i| &**i as &(dyn ToSql + Sync))
-            .collect::<Vec<&(dyn ToSql + Sync)>>()
-    };
-}
+use crate::{Column, Filter, _get_client, conv_params};
 
 #[must_use]
 pub struct SelectBuilder<T> {

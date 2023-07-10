@@ -157,7 +157,7 @@ use thiserror::Error;
 
 pub mod prelude {
     pub use crate::{
-        connect, force_register, register, Column, Filter, Join, JoinType, Model, NoTls, Query,
+        connect, force_register, register, Column, Filter, Join, JoinType, Model, NoTls, select, update, delete
     };
 
     pub use std::ops::Deref;
@@ -171,7 +171,8 @@ pub enum Error {
     AlreadyConnected,
     #[error("not connected to database")]
     NotConnected,
-
+    #[error("attempted to update {0} without providing updates")]
+    NoUpdates(String),
     #[error("error communicating with database")]
     PostgresError(#[from] tokio_postgres::Error),
 }
@@ -202,6 +203,10 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     fn select() -> SelectBuilder<Vec<T>>;
 
     fn select_one() -> SelectBuilder<Option<T>>;
+
+    fn delete() -> DeleteBuilder;
+
+    fn update() -> UpdateBuilder;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();

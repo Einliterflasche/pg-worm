@@ -76,7 +76,7 @@ impl Filter {
         }
     }
 
-    fn question_mark_to_numbered_dollar(query: String) -> String {
+    pub(crate) fn question_mark_to_numbered_dollar(query: String) -> String {
         let mut res = String::with_capacity(query.len() + 10);
 
         // e.g. "WHERE ? < ?" -> "WHERE $1 < $2"

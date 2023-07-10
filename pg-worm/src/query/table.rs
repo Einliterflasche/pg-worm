@@ -89,6 +89,10 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
         )
     }
 
+    pub fn neq(&self, value: impl Into<T>) -> Filter {
+        !self.eq(value)
+    }
+
     /// Check whether the columns value is one of `values`.
     ///
     /// Translates to `WHERE <column_name> IN <values>`
@@ -185,12 +189,6 @@ impl<T: ToSql + Sync> Deref for TypedColumn<T> {
     type Target = Column;
 
     fn deref(&self) -> &Self::Target {
-        &self.column
-    }
-}
-
-impl<T: ToSql + Sync> AsRef<Column> for TypedColumn<T> {
-    fn as_ref(&self) -> &Column {
         &self.column
     }
 }

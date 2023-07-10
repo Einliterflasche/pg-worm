@@ -106,11 +106,15 @@ impl ModelInput {
         let creation_sql = self.table_creation_sql();
 
         let select = self.impl_select();
+        let delete = self.impl_delete();
+        let update = self.impl_update();
 
         quote!(
             #[pg_worm::async_trait]
             impl pg_worm::Model<#ident> for #ident {
                 #select
+                #delete                
+                #update
 
                 fn table_name() -> &'static str {
                     #table_name
@@ -127,6 +131,26 @@ impl ModelInput {
         )
     }
 
+    fn impl_update(&self) -> TokenStream {
+        let ident = self.ident();
+
+        quote!(
+            fn update() -> pg_worm::UpdateBuilder {
+                pg_worm::update::<#ident>()
+            }
+        )
+    }
+
+    fn impl_delete(&self) -> TokenStream {
+        let ident = self.ident();
+
+        quote!(
+            fn delete() -> pg_worm::DeleteBuilder {
+                pg_worm::delete::<#ident>()
+            }
+        )
+    }
+
     /// Generate the code for the
     /// select method.
     fn impl_select(&self) -> TokenStream {
@@ -134,11 +158,11 @@ impl ModelInput {
 
         quote!(
             fn select() -> pg_worm::SelectBuilder<Vec<#ident>> {
-                pg_worm::Query::select(#ident::COLUMNS)
+                pg_worm::select(#ident::COLUMNS)
             }
 
             fn select_one() -> pg_worm::SelectBuilder<Option<#ident>> {
-                pg_worm::Query::select(#ident::COLUMNS)
+                pg_worm::select(#ident::COLUMNS)
             }
         )
     }
