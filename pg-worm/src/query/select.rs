@@ -1,119 +1,108 @@
-use std::{
-    future::{Future, IntoFuture},
-    marker::PhantomData,
-    pin::Pin,
-};
+use std::{ops::Deref, marker::PhantomData, future::{IntoFuture, Future}, pin::Pin};
 
-use tokio_postgres::{types::ToSql, Row};
+use crate::Column;
+use super::{Where, Query, PushChunk, Executable};
 
-use crate::{Column, Filter, _get_client, conv_params};
-
-#[must_use]
-pub struct SelectBuilder<T> {
-    cols: String,
-    table: String,
-    filter: Filter,
-    parse_to: PhantomData<T>,
+pub struct Select<'a, T> {
+    cols: Vec<Column>,
+    from: &'static str,
+    where_: Where<'a>,
+    marker: PhantomData<T>
 }
 
-impl<T> SelectBuilder<T> {
-    pub(crate) fn new(cols: &[&Column]) -> SelectBuilder<T> {
-        let table = cols[0].table_name().to_string();
-        let cols = cols
-            .iter()
-            .map(|i| i.full_name())
-            .collect::<Vec<_>>()
-            .join(", ");
-        SelectBuilder {
-            cols,
-            table,
-            filter: Filter::all(),
-            parse_to: PhantomData::<T>,
+impl<'a, T> Select<'a, T> {
+    pub(crate) fn new(cols: &[&dyn Deref<Target = Column>]) -> Select<'a, T> {
+        Select { 
+            cols: cols.into_iter().map(|i| i.deref().deref().clone()).collect(), 
+            from: "", 
+            where_: Where::Empty,
+            marker: PhantomData::<T>
         }
     }
 
-    fn to_stmt(&self) -> String {
-        format!(
-            "SELECT {} FROM {} {}",
-            self.cols,
-            self.table,
-            self.filter.to_sql()
-        )
-    }
-
-    /// Add a WHERE clause to your query:
-    ///
-    /// ```ignore
-    /// use pg_worm::prelude::*;
-    /// #[derive(Model)]
-    /// struct Book {
-    ///     id: i32,
-    ///     title: String
-    /// }
-    ///
-    /// let og_book = Book::select()
-    ///     .filter(Book::id.eq(1))
-    ///     .await?;
-    /// ```
-    pub fn filter(mut self, filter: Filter) -> SelectBuilder<T> {
-        self.filter = self.filter & filter;
+    /// Set the table `FROM` which the columns should be selected.
+    pub fn from(mut self, from: &'static str) -> Select<'a, T> {
+        self.from = from;
 
         self
     }
-}
 
-impl<T: TryFrom<Row, Error = crate::Error>> SelectBuilder<Vec<T>> {
-    pub async fn exec(self) -> Result<Vec<T>, pg_worm::Error> {
-        let stmt = self.to_stmt();
+    /// Add a WHERE clause to your query. 
+    /// 
+    /// If used multiple time, the conditions are joined 
+    /// using `AND`.
+    pub fn where_(mut self, where_: Where<'a>) -> Select<'a, T> {
+        self.where_ = self.where_.and(where_);
 
-        // Prepare params
-        let params = conv_params!(self.filter.args());
+        self
+    }
 
-        let client = _get_client()?;
+    /// Convert to a query.
+    pub fn to_query(mut self) -> Query<'a, T> {
+        let mut query = Query::default();
+        self.push_to_buffer(&mut query);
 
-        let res = client.query(&stmt, &params).await?;
+        // Since we change '?' to e.g. '$1' we need to
+        // reserve some more space to avoid reallocating the whole string.
+        const RESERVED: usize = 9;
+        let mut buf = String::with_capacity(query.0.len() + RESERVED);
 
-        res.into_iter().map(T::try_from).collect()
+        let mut counter = 1;
+        let mut last_index = 0;
+
+        for (i, _) in query.0.match_indices("?") {
+            buf.push_str(&query.0[0..i]);
+            buf.push('$');
+            buf.push_str(&counter.to_string());
+            
+            counter += 1;
+            last_index = i + 1;
+        }
+        // Push the tail
+        buf.push_str(&query.0[last_index..]);
+        // Update the string to the one with $-like placeholders
+        query.0 = buf;
+
+        query
     }
 }
 
-impl<T: TryFrom<Row, Error = crate::Error>> SelectBuilder<Option<T>> {
-    pub async fn exec(self) -> Result<Option<T>, crate::Error> {
-        let stmt = self.to_stmt();
-        let params = conv_params!(self.filter.args());
-        let client = _get_client()?;
+impl<'a, T> PushChunk<'a> for Select<'a, T> {
+    fn push_to_buffer<B>(&mut self, buffer: &mut Query<'a, B>) {
+        buffer.0.push_str("SELECT ");
 
-        let res = client
-            .query(&stmt, &params)
-            .await?
-            .into_iter()
-            .map(|i| T::try_from(i))
-            .next();
+        // Push the selected columns
+        let cols = self.cols.iter()
+            .map(|i| i.column_name())
+            .collect::<Vec<_>>().join(", ");
+        buffer.0.push_str(&cols);
 
-        match res {
-            None => Ok(None),
-            Some(res) => match res {
-                Ok(res) => Ok(Some(res)),
-                Err(err) => Err(err),
-            },
+        // Push the table from which the columns
+        // are selected
+        buffer.0.push_str(" FROM ");
+        buffer.0.push_str(self.from);
+
+        // If it exists, push the WHERE clause
+        if !self.where_.is_empty() {
+            buffer.0.push_str(" WHERE ");
+            self.where_.push_to_buffer(buffer);
         }
     }
 }
 
-impl<T: TryFrom<Row, Error = crate::Error> + 'static> IntoFuture for SelectBuilder<Vec<T>> {
-    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output>>>;
-    type Output = Result<Vec<T>, crate::Error>;
+impl<'a, T> IntoFuture for Select<'a, T>
+where 
+    Query<'a, T>: Executable,
+    T: 'a
+{
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
+    type Output = Result<<Query<'a, T> as Executable>::Output, crate::Error>;
 
     fn into_future(self) -> Self::IntoFuture {
-        Box::pin(async move { self.exec().await })
-    }
-}
+        let query = self.to_query();
 
-impl<T: TryFrom<Row, Error = crate::Error> + 'static> IntoFuture for SelectBuilder<Option<T>> {
-    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output>>>;
-    type Output = Result<Option<T>, crate::Error>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(async move { self.exec().await })
+        Box::pin(async move {
+            query.exec().await
+        })
     }
 }

@@ -53,28 +53,13 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Book::insert("Foo - Part III", None, vec![], 3)
     )?;
 
-    // Let's start with a simple query for all books.
-    let all_books = Book::select().await?;
-    assert_eq!(all_books.len(), 3);
+    let a: String = "a".into();
 
-    // Or select based on a condition
-    let books_with_subtitle = Book::select().filter(Book::sub_title.not_null()).await?;
-    assert_eq!(books_with_subtitle.len(), 1);
-
-    // Or select just one book
-    let first_book = Book::select_one().filter(Book::id.eq(1)).await?;
-    assert!(first_book.is_some());
-
-    // Or delete all books without a subtitle
-    let book_deleted = Book::delete()
-        .filter(Book::sub_title.null())
-        .await?;
-    assert_eq!(book_deleted, 2);
-
-    let books_updated = Book::update()
-        .set(Book::title, "trololol")
-        .await?;   
-    assert_eq!(books_updated, 1);
+    let books = Book::select()
+        .where_(Book::id.eq(&1))
+        .where_(Book::id.eq(&2))
+        .to_query().0;
+    panic!("{books}");
 
     Ok(())
 }

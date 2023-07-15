@@ -113,8 +113,8 @@ impl ModelInput {
             #[pg_worm::async_trait]
             impl pg_worm::Model<#ident> for #ident {
                 #select
-                #delete                
-                #update
+                //#delete                
+                //#update
 
                 fn table_name() -> &'static str {
                     #table_name
@@ -157,12 +157,8 @@ impl ModelInput {
         let ident = self.ident();
 
         quote!(
-            fn select() -> pg_worm::SelectBuilder<Vec<#ident>> {
-                pg_worm::select(#ident::COLUMNS)
-            }
-
-            fn select_one() -> pg_worm::SelectBuilder<Option<#ident>> {
-                pg_worm::select(#ident::COLUMNS)
+            fn select<'a>() -> pg_worm::Select<'a, Vec<#ident>> {
+                pg_worm::select(#ident::columns())
             }
         )
     }
