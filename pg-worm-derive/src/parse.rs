@@ -157,8 +157,8 @@ impl ModelInput {
         let ident = self.ident();
 
         quote!(
-            fn select<'a>() -> pg_worm::Select<'a, Vec<#ident>> {
-                pg_worm::select(#ident::columns())
+            fn select<'a>() -> pg_worm::query::Select<'a, Vec<#ident>> {
+                pg_worm::query::Select::new(#ident::columns(), #ident::table_name())
             }
         )
     }

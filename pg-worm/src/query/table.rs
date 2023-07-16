@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::Deref};
 
 use tokio_postgres::types::ToSql;
 
-use crate::Where;
+use crate::query::Where;
 
 /// A wrapper around the [`Column`] struct which includes
 /// the rust type of the field.
@@ -40,7 +40,9 @@ pub struct TypedColumn<T: ToSql + Sync> {
 /// It is mostly seen in it's wrapped form [`TypedColumn`].
 #[derive(Copy, Clone, Debug)]
 pub struct Column {
+    /// The name of this column.
     pub column_name: &'static str,
+    /// The name of the table this columnn belongs to.
     pub table_name: &'static str,
     nullable: bool,
     unique: bool,
@@ -51,6 +53,7 @@ pub struct Column {
 macro_rules! impl_prop_typed_col {
     ($($prop:ident),+) => {
         $(
+            /// Set this property so `true`.
             pub const fn $prop(mut self) -> TypedColumn<T> {
                 self.column.$prop = true;
                 self
@@ -62,6 +65,7 @@ macro_rules! impl_prop_typed_col {
 macro_rules! impl_prop_col {
     ($($prop:ident),+) => {
         $(
+            /// Returns this propertie's value.
             pub const fn $prop(&self) -> bool {
                 self.$prop
             }
@@ -70,6 +74,7 @@ macro_rules! impl_prop_col {
 }
 
 impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
+    /// Creates anew `TypedColumn<T>`.
     pub const fn new(table_name: &'static str, column_name: &'static str) -> TypedColumn<T> {
         TypedColumn {
             column: Column::new(table_name, column_name),
@@ -79,6 +84,8 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
 
     impl_prop_typed_col!(nullable, unique, primary_key, generated);
 
+    /// Returns a [`Where`] clause which checks whether
+    /// this column is equal to some value.
     pub fn eq<'a>(&self, other: &'a T) -> Where<'a> {
         Where::new(
             format!("{}.{} = ?", self.table_name, self.column_name), 
@@ -96,7 +103,8 @@ impl<T: ToSql + Sync> Deref for TypedColumn<T> {
 }
 
 impl Column {
-    pub const fn new(table_name: &'static str, column_name: &'static str) -> Column {
+    /// Creates a new column
+    const fn new(table_name: &'static str, column_name: &'static str) -> Column {
         
         Column {
             column_name,

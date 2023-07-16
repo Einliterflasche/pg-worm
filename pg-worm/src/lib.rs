@@ -136,6 +136,8 @@
 //!    If adding an option means infringing the ease of use then it will likely
 //!    not be added.
 
+#![deny(missing_docs)]
+
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
 
@@ -143,37 +145,49 @@ pub mod query;
 
 use std::ops::Deref;
 
+pub use query::{Column, TypedColumn};
+
 pub use async_trait::async_trait;
 pub use pg::{NoTls, Row};
 pub use pg_worm_derive::Model;
+use prelude::Select;
 /// This crate's reexport of the `tokio_postgres` crate.
 pub use tokio_postgres as pg;
-
-pub use query::*;
 
 use once_cell::sync::OnceCell;
 use pg::{tls::MakeTlsConnect, Client, Connection, Socket};
 use thiserror::Error;
 
+/// This module contains all necessary imports to get you started
+/// easily. 
 pub mod prelude {
     pub use crate::{
-        connect, force_register, register, Column, Model, NoTls,
-        Where, Select
+        Model,
+        connect, 
+        NoTls,
+        force_register, 
+        register,
     };
 
+    pub use crate::query::{Column, TypedColumn, Select};
     pub use std::ops::Deref;
 }
 
+/// An enum representing the errors which are emitted by this crate.
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Something went wrong while connection to the database.
     #[error("couldn't connect to database")]
     ConnectionError,
+    /// There already is a connection to the database.
     #[error("already connected to database")]
     AlreadyConnected,
+    /// No connection has yet been established.
     #[error("not connected to database")]
     NotConnected,
-    #[error("attempted to update {0} without providing updates")]
-    NoUpdates(String),
+    /// Errors emitted by the Postgres server.
+    /// 
+    /// Most likely an invalid query.
     #[error("error communicating with database")]
     PostgresError(#[from] tokio_postgres::Error),
 }
@@ -191,16 +205,13 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     #[must_use]
     fn _table_creation_sql() -> &'static str;
 
+    /// Returns a slice of all columns this model's table has.
     fn columns() -> &'static [&'static dyn Deref<Target = Column>];
 
+    /// Returns the name of this model's table's name.
     fn table_name() -> &'static str;
 
-    // /// Retrieve all entities from the table.
-    // ///
-    // /// # Panics
-    // /// For the sake of convenience this function does not return
-    // /// a `Result` but panics instead
-    // ///  - if there is no database connection
+    /// Start building a `SELECT` query which will be parsed to this model.
     fn select<'a>() -> Select<'a, Vec<T>>;
 }
 

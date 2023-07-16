@@ -1,46 +1,62 @@
-pub mod select;
-pub mod table;
+//! This module contains the logic for building queries,
+//! as well as struct for representing columns.
+
+mod select;
+mod table;
 
 pub use table::{Column, TypedColumn};
 
-use std::{ops::{BitAnd, BitOr, Not, Deref}, marker::PhantomData};
+use std::{ops::{BitAnd, BitOr, Not}, marker::PhantomData};
 
 use async_trait::async_trait;
 use tokio_postgres::{types::ToSql, Row};
 
-use crate::{_get_client, Model};
+use crate::_get_client;
 
 pub use select::Select;
 
+/// A trait implemented by everything that goes inside a query.
 pub trait PushChunk<'a> {
+    /// Pushes the containing string and the params to the provided buffer.
     fn push_to_buffer<T>(&mut self, buffer: &mut Query<'a, T>);
 }
 
+/// Trait used to mark exectuable queries. It is used
+/// to make use of generics for executing them.
 #[async_trait]
 pub trait Executable {
     /// What output should this query result in?
     type Output;
 
+    /// The actual function for executing a query.
     async fn exec(self) -> Result<Self::Output, crate::Error>;
 }
 
+/// A struct for storing a complete query along with
+/// parameters and output type. 
+/// 
+/// Depending on the output type, [`Executable`] is implemented differently
+/// to allow for easy parsing.
 pub struct Query<'a, T = Vec<Row>>(
     pub String, 
     Vec<&'a (dyn ToSql + Sync)>, 
     PhantomData<T>
 );
+/// A basic chunk of SQL and it's params.
 pub struct SqlChunk<'a>(pub String, pub Vec<&'a (dyn ToSql + Sync)>);
 
+/// An enum representing the `WHERE` clause of a query.
 pub enum Where<'a> {
+    /// A number of conditions joined by `AND`.
     And(Vec<Where<'a>>),
+    /// A number of conditions joined by `OR`.
     Or(Vec<Where<'a>>),
+    /// A negated condition.
     Not(Box<Where<'a>>),
+    /// A raw condition.
     Raw(SqlChunk<'a>),
+    /// An empty `WHERE` clause.
     Empty
-}
-
-pub fn select<'a, T: Model<T>>(cols: &[&dyn Deref<Target = Column>]) -> Select<'a, Vec<T>> {
-    Select::new(cols).from(T::table_name())
 }
 
 impl<'a, T> Default for Query<'a, T> {

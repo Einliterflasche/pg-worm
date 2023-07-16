@@ -53,13 +53,11 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Book::insert("Foo - Part III", None, vec![], 3)
     )?;
 
-    let a: String = "a".into();
-
     let books = Book::select()
-        .where_(Book::id.eq(&1))
-        .where_(Book::id.eq(&2))
-        .to_query().0;
-    panic!("{books}");
+        .offset(2)
+        .limit(2)
+        .await?;
+    assert_eq!(books.len(), 1);
 
     Ok(())
 }
