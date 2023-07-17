@@ -160,6 +160,10 @@ impl ModelInput {
             fn select<'a>() -> pg_worm::query::Select<'a, Vec<#ident>> {
                 pg_worm::query::Select::new(#ident::columns(), #ident::table_name())
             }
+
+            fn select_one<'a>() -> pg_worm::query::Select<'a, Option<#ident>> {
+                pg_worm::query::Select::new(#ident::columns(), #ident::table_name())
+            }
         )
     }
 

@@ -213,6 +213,10 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
 
     /// Start building a `SELECT` query which will be parsed to this model.
     fn select<'a>() -> Select<'a, Vec<T>>;
+
+    /// Start building a `SELECT` query which returns either
+    /// one entity or `None`.
+    fn select_one<'a>() -> Select<'a, Option<T>>;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();

@@ -53,11 +53,15 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         Book::insert("Foo - Part III", None, vec![], 3)
     )?;
 
-    let books = Book::select()
-        .offset(2)
-        .limit(2)
+    // Easily query for all books
+    let books = Book::select().await?;
+    assert_eq!(books.len(), 3);
+
+    // Or check whether your favorite book is listed
+    let manifesto = Book::select_one()
+        .where_(Book::title.eq(&"The Communist Manifesto".into()))
         .await?;
-    assert_eq!(books.len(), 1);
+    assert!(manifesto.is_none());
 
     Ok(())
 }

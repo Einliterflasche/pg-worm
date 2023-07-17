@@ -83,6 +83,25 @@ where
     }
 }
 
+#[async_trait]
+impl<'a, T> Executable for Query<'a, Option<T>>
+where 
+    T: TryFrom<Row, Error = crate::Error> + Send
+{
+    type Output = Option<T>;
+
+    async fn exec(self) -> Result<Self::Output, crate::Error> {
+        let client = _get_client()?;
+        let rows = client.query(&self.0, &self.1).await?;
+
+        rows
+            .into_iter()
+            .map(|i: Row| T::try_from(i))
+            .next()
+            .transpose()
+    }
+}
+
 impl<'a> Where<'a> {
     /// Create a new WHERE expression with parameters. 
     pub(crate) fn new(expr: String, params: Vec<&'a (dyn ToSql + Sync)>) -> Where<'a> {
