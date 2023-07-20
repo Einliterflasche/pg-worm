@@ -106,7 +106,7 @@ impl ModelInput {
         let creation_sql = self.table_creation_sql();
 
         let select = self.impl_select();
-        let delete = self.impl_delete();
+        let _delete = self.impl_delete();
         let update = self.impl_update();
 
         quote!(

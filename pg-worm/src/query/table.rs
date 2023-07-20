@@ -94,6 +94,44 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
     }
 }
 
+impl<T: ToSql + Sync + Send + 'static + PartialOrd> TypedColumn<T> {
+    /// Check whether this column's value is **g**reater **t**han some
+    /// other value.
+    pub fn gt<'a>(&self, other: &'a T) -> Where<'a> {
+        Where::new(
+            format!("{}.{} > ?", self.table_name, self.column_name),
+            vec![other] 
+        )
+    }
+
+    /// Check whether this colum's value is **g**reater **t**han or **e**qual
+    /// to another value.
+    pub fn gte<'a>(&self, other: &'a T) -> Where<'a> {
+        Where::new(
+            format!("{}.{} >= ?", self.table_name, self.column_name), 
+            vec![other]
+        )
+    }
+
+    /// Check whether this column's value is **l**ess **t**han some
+    /// other value.
+    pub fn lt<'a>(&self, other: &'a T) -> Where<'a> {
+        Where::new(
+            format!("{}.{} < ?", self.table_name, self.column_name), 
+            vec![other]
+        )
+    }
+
+    /// Check whether this colum's value is **l**ess **t**han or **e**qual
+    /// to another value.
+    pub fn lte<'a>(&self, other: &'a T) -> Where<'a> {
+        Where::new(
+            format!("{}.{} <= ?", self.table_name, self.column_name), 
+            vec![other]
+        )
+    }
+} 
+
 impl<T: ToSql + Sync> Deref for TypedColumn<T> {
     type Target = Column;
 
@@ -145,5 +183,68 @@ impl Column {
     #[inline]
     pub fn full_name(&self) -> String {
         format!("{}.{}", self.table_name, self.column_name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(dead_code)]
+
+    use crate::{prelude::*, query::{Where, PushChunk}};
+
+    impl<'a> Where<'a> {
+        /// This is a convieniance function for testing purposes.
+        fn to_stmt(&mut self) -> String {
+            let mut q = Query::<u64>::default();
+            self.push_to_buffer(&mut q);
+
+            q.0
+        }
+    }
+
+    #[derive(Model)]
+    struct Book {
+        id: i64,
+        title: String
+    }
+
+    #[test]
+    fn equals() {
+        assert_eq!(
+            Book::title.eq(&"ABC".into()).to_stmt(),
+            "book.title = ?"
+        )
+    }
+
+    #[test]
+    fn greater_than() {
+        assert_eq!(
+            Book::id.gt(&1).to_stmt(),
+            "book.id > ?"
+        );
+    }
+
+    #[test]
+    fn greater_than_equals() {
+        assert_eq!(
+            Book::id.gte(&1).to_stmt(),
+            "book.id >= ?"
+        );
+    }
+
+    #[test]
+    fn less_than() {
+        assert_eq!(
+            Book::id.lt(&1).to_stmt(),
+            "book.id < ?"
+        )
+    }
+
+    #[test]
+    fn less_than_equals() {
+        assert_eq!(
+            Book::id.lte(&1).to_stmt(),
+            "book.id <= ?"
+        )
     }
 }

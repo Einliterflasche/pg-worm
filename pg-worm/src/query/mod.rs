@@ -237,8 +237,6 @@ impl<'a> Where<'a> {
     pub fn or(self, other: Where<'a>) -> Where<'a> {
         self.bitor(other)
     }
-
-    
 }
 
 impl<'a> Default for Where<'a> {
