@@ -1,13 +1,12 @@
 #![allow(dead_code)]
 
-use pg_worm::{prelude::*, query::Update};
+use pg_worm::prelude::*;
 use tokio::try_join;
 
 #[derive(Model)]
 struct Book {
     #[column(primary_key, auto)]
     id: i64,
-    #[column(unique)]
     title: String,
     sub_title: Option<String>,
     pages: Vec<String>,
