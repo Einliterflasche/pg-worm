@@ -1,21 +1,26 @@
 //! This module contains the logic for building queries,
 //! as well as struct for representing columns.
 
+mod delete;
 mod select;
-mod update;
 mod table;
+mod update;
 
 pub use table::{Column, TypedColumn};
 
-use std::{ops::{BitAnd, BitOr, Not}, marker::PhantomData};
+use std::{
+    marker::PhantomData,
+    ops::{BitAnd, BitOr, Not},
+};
 
 use async_trait::async_trait;
 use tokio_postgres::{types::ToSql, Row};
 
 use crate::_get_client;
 
+pub use delete::Delete;
 pub use select::Select;
-pub use update::{Update, NoneSet, SomeSet};
+pub use update::{NoneSet, SomeSet, Update};
 
 /// A trait implemented by everything that goes inside a query.
 pub trait PushChunk<'a> {
@@ -35,19 +40,14 @@ pub trait Executable {
 }
 
 /// A struct for storing a complete query along with
-/// parameters and output type. 
-/// 
+/// parameters and output type.
+///
 /// Depending on the output type, [`Executable`] is implemented differently
 /// to allow for easy parsing.
-pub struct Query<'a, T = Vec<Row>>(
-    pub String, 
-    Vec<&'a (dyn ToSql + Sync)>, 
-    PhantomData<T>
-);
+pub struct Query<'a, T = Vec<Row>>(pub String, Vec<&'a (dyn ToSql + Sync)>, PhantomData<T>);
 
 /// A trait implemented by query builders
 pub trait ToQuery<'a, T>: PushChunk<'a> {
-
     /// A default implementation for building a query which can then be executed.
     fn to_query(&mut self) -> Query<'a, T> {
         // Create a new query object.
@@ -64,10 +64,10 @@ pub trait ToQuery<'a, T>: PushChunk<'a> {
     }
 }
 
-/// A basic chunk of SQL and it's params. 
-/// 
+/// A basic chunk of SQL and it's params.
+///
 /// This is bundes the params with the relevant part of the statement
-/// and thus makes ordering them much easier. 
+/// and thus makes ordering them much easier.
 pub struct SqlChunk<'a>(pub String, pub Vec<&'a (dyn ToSql + Sync)>);
 
 /// A generic implementation of `IntoFuture` for all viable query builders
@@ -75,12 +75,16 @@ pub struct SqlChunk<'a>(pub String, pub Vec<&'a (dyn ToSql + Sync)>);
 /// by calling `.await`.
 
 /// Push multiple `PushChunk` objects to a buffer with a separator
-/// between each of them. 
-/// 
+/// between each of them.
+///
 /// Like `Vec::join()`.
-fn push_all_with_sep<'a, T, U: PushChunk<'a>>(vec: &mut Vec<U>, buffer: &mut Query<'a, T>, sep: &str) {
+fn push_all_with_sep<'a, T, U: PushChunk<'a>>(
+    vec: &mut Vec<U>,
+    buffer: &mut Query<'a, T>,
+    sep: &str,
+) {
     if vec.is_empty() {
-        return
+        return;
     }
 
     for i in vec {
@@ -90,9 +94,7 @@ fn push_all_with_sep<'a, T, U: PushChunk<'a>>(vec: &mut Vec<U>, buffer: &mut Que
 
     // Remove the last `sep` as it's not
     // in between elements.
-    buffer.0.truncate(
-        buffer.0.len() - sep.len()
-    );
+    buffer.0.truncate(buffer.0.len() - sep.len());
 }
 
 /// An enum representing the `WHERE` clause of a query.
@@ -106,31 +108,38 @@ pub enum Where<'a> {
     /// A raw condition.
     Raw(SqlChunk<'a>),
     /// An empty `WHERE` clause.
-    Empty
+    Empty,
 }
 
 /// Replace all `?` placeholders with the Postgres variant
-/// `$1`, `$2`, ... 
+/// `$1`, `$2`, etc.
 fn replace_question_marks(stmt: String) -> String {
     // Since we change '?' to e.g. '$1' we need to
-    // reserve some more space to avoid reallocating the whole string.
+    // reserve some more space to avoid reallocating.
     const RESERVED: usize = 9;
     let mut buf = String::with_capacity(stmt.len() + RESERVED);
 
+    // Tracking variables
     let mut counter = 1;
     let mut last_index = 0;
 
-    for (i, _) in stmt.match_indices("?") {
+    // Looping through all '?' in the string
+    for (i, _) in stmt.match_indices('?') {
+        // Push everything until the '?'
         buf.push_str(&stmt[last_index..i]);
+
+        // Push '$' including the number
         buf.push('$');
         buf.push_str(&counter.to_string());
-        
+
+        // Update variables
         counter += 1;
         last_index = i + 1;
     }
+
     // Push the tail
     buf.push_str(&stmt[last_index..]);
-    
+
     buf
 }
 
@@ -150,7 +159,7 @@ impl<'a> PushChunk<'a> for SqlChunk<'a> {
 #[async_trait]
 impl<'a, T> Executable for Query<'a, Vec<T>>
 where
-    T: TryFrom<Row, Error = crate::Error> + Send
+    T: TryFrom<Row, Error = crate::Error> + Send,
 {
     type Output = Vec<T>;
 
@@ -158,17 +167,14 @@ where
         let client = _get_client()?;
         let rows = client.query(&self.0, &self.1).await?;
 
-        rows
-            .into_iter()
-            .map(|i| T::try_from(i))
-            .collect()
+        rows.into_iter().map(|i| T::try_from(i)).collect()
     }
 }
 
 #[async_trait]
 impl<'a, T> Executable for Query<'a, Option<T>>
-where 
-    T: TryFrom<Row, Error = crate::Error> + Send
+where
+    T: TryFrom<Row, Error = crate::Error> + Send,
 {
     type Output = Option<T>;
 
@@ -176,8 +182,7 @@ where
         let client = _get_client()?;
         let rows = client.query(&self.0, &self.1).await?;
 
-        rows
-            .into_iter()
+        rows.into_iter()
             .map(|i: Row| T::try_from(i))
             .next()
             .transpose()
@@ -190,15 +195,13 @@ impl<'a> Executable for Query<'a, u64> {
 
     async fn exec(self) -> Result<Self::Output, crate::Error> {
         let client = _get_client()?;
-        
-        Ok(
-            client.execute(&self.0, &self.1).await?
-        )
+
+        Ok(client.execute(&self.0, &self.1).await?)
     }
 }
 
 impl<'a> Where<'a> {
-    /// Create a new WHERE expression with parameters. 
+    /// Create a new WHERE expression with parameters.
     pub(crate) fn new(expr: String, params: Vec<&'a (dyn ToSql + Sync)>) -> Where<'a> {
         Self::Raw(SqlChunk(expr, params))
     }
@@ -209,26 +212,24 @@ impl<'a> Where<'a> {
 
         match self {
             Empty => true,
-            And(vec) => vec.iter()
-                .all(|i| i.is_empty()),
-            Or(vec) => vec.iter()
-                .all(|i| i.is_empty()),
+            And(vec) => vec.iter().all(|i| i.is_empty()),
+            Or(vec) => vec.iter().all(|i| i.is_empty()),
             Not(inner) => inner.is_empty(),
-            Raw(chunk) => chunk.0.is_empty()
+            Raw(chunk) => chunk.0.is_empty(),
         }
     }
 
-    /// Combine two conditions using AND. 
-    /// 
+    /// Combine two conditions using AND.
+    ///
     /// You can also use the `&` operator.
     pub fn and(self, other: Where<'a>) -> Where<'a> {
         self.bitand(other)
     }
 
-    /// Combine two conditions using OR. 
-    /// 
+    /// Combine two conditions using OR.
+    ///
     /// You can also use the `|` operator.
-    /// 
+    ///
     /// # Example
     /// ```ignore
     /// Where::new("id = ?", vec![&7])
@@ -251,6 +252,14 @@ impl<'a> BitAnd for Where<'a> {
     fn bitand(mut self, mut other: Self) -> Self::Output {
         use Where::*;
 
+        if let Empty = self {
+            return other;
+        }
+
+        if let Empty = other {
+            return self;
+        }
+
         // If self is already an AND variant,
         // simply add other to the vec.
         // This prevents unnecessary nesting.
@@ -261,12 +270,12 @@ impl<'a> BitAnd for Where<'a> {
             } else {
                 vec.push(other);
             }
-            return self
+            return self;
         }
 
         if let And(ref mut vec) = other {
             vec.push(self);
-            return other
+            return other;
         }
 
         And(vec![self, other])
@@ -280,10 +289,10 @@ impl<'a> BitOr for Where<'a> {
         use Where::*;
 
         if let Empty = self {
-            return other
+            return other;
         }
         if let Empty = other {
-            return self
+            return self;
         }
 
         // If self is already an OR variant,
@@ -296,12 +305,12 @@ impl<'a> BitOr for Where<'a> {
             } else {
                 vec.push(other);
             }
-            return self
+            return self;
         }
 
         if let Or(ref mut vec) = other {
             vec.push(self);
-            return other
+            return other;
         }
 
         Or(vec![self, other])
@@ -315,7 +324,7 @@ impl<'a> Not for Where<'a> {
         use Where::*;
 
         if let Not(inner) = self {
-            return *inner
+            return *inner;
         }
 
         Not(Box::new(self))
@@ -327,29 +336,29 @@ impl<'a> PushChunk<'a> for Where<'a> {
         use Where::*;
 
         if self.is_empty() {
-            return
+            return;
         }
 
         match self {
             Raw(chunk) => {
                 chunk.push_to_buffer(buffer);
-            },
+            }
             Not(inner) => {
                 buffer.0.push_str("NOT (");
                 inner.push_to_buffer(buffer);
                 buffer.0.push(')');
-            },
+            }
             And(vec) => {
                 buffer.0.push('(');
                 push_all_with_sep(vec, buffer, ") AND (");
                 buffer.0.push(')');
-            },
+            }
             Or(vec) => {
                 buffer.0.push('(');
                 push_all_with_sep(vec, buffer, ") OR (");
                 buffer.0.push(')');
-            },
-            Empty => ()
+            }
+            Empty => (),
         }
     }
 }

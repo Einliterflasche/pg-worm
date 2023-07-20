@@ -88,8 +88,8 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
     /// this column is equal to some value.
     pub fn eq<'a>(&self, other: &'a T) -> Where<'a> {
         Where::new(
-            format!("{}.{} = ?", self.table_name, self.column_name), 
-            vec![other]
+            format!("{}.{} = ?", self.table_name, self.column_name),
+            vec![other],
         )
     }
 }
@@ -100,7 +100,7 @@ impl<T: ToSql + Sync + Send + 'static + PartialOrd> TypedColumn<T> {
     pub fn gt<'a>(&self, other: &'a T) -> Where<'a> {
         Where::new(
             format!("{}.{} > ?", self.table_name, self.column_name),
-            vec![other] 
+            vec![other],
         )
     }
 
@@ -108,8 +108,8 @@ impl<T: ToSql + Sync + Send + 'static + PartialOrd> TypedColumn<T> {
     /// to another value.
     pub fn gte<'a>(&self, other: &'a T) -> Where<'a> {
         Where::new(
-            format!("{}.{} >= ?", self.table_name, self.column_name), 
-            vec![other]
+            format!("{}.{} >= ?", self.table_name, self.column_name),
+            vec![other],
         )
     }
 
@@ -117,8 +117,8 @@ impl<T: ToSql + Sync + Send + 'static + PartialOrd> TypedColumn<T> {
     /// other value.
     pub fn lt<'a>(&self, other: &'a T) -> Where<'a> {
         Where::new(
-            format!("{}.{} < ?", self.table_name, self.column_name), 
-            vec![other]
+            format!("{}.{} < ?", self.table_name, self.column_name),
+            vec![other],
         )
     }
 
@@ -126,11 +126,11 @@ impl<T: ToSql + Sync + Send + 'static + PartialOrd> TypedColumn<T> {
     /// to another value.
     pub fn lte<'a>(&self, other: &'a T) -> Where<'a> {
         Where::new(
-            format!("{}.{} <= ?", self.table_name, self.column_name), 
-            vec![other]
+            format!("{}.{} <= ?", self.table_name, self.column_name),
+            vec![other],
         )
     }
-} 
+}
 
 impl<T: ToSql + Sync> Deref for TypedColumn<T> {
     type Target = Column;
@@ -143,7 +143,6 @@ impl<T: ToSql + Sync> Deref for TypedColumn<T> {
 impl Column {
     /// Creates a new column
     const fn new(table_name: &'static str, column_name: &'static str) -> Column {
-        
         Column {
             column_name,
             table_name,
@@ -190,7 +189,10 @@ impl Column {
 mod tests {
     #![allow(dead_code)]
 
-    use crate::{prelude::*, query::{Where, PushChunk}};
+    use crate::{
+        prelude::*,
+        query::{PushChunk, Where},
+    };
 
     impl<'a> Where<'a> {
         /// This is a convieniance function for testing purposes.
@@ -205,46 +207,31 @@ mod tests {
     #[derive(Model)]
     struct Book {
         id: i64,
-        title: String
+        title: String,
     }
 
     #[test]
     fn equals() {
-        assert_eq!(
-            Book::title.eq(&"ABC".into()).to_stmt(),
-            "book.title = ?"
-        )
+        assert_eq!(Book::title.eq(&"ABC".into()).to_stmt(), "book.title = ?")
     }
 
     #[test]
     fn greater_than() {
-        assert_eq!(
-            Book::id.gt(&1).to_stmt(),
-            "book.id > ?"
-        );
+        assert_eq!(Book::id.gt(&1).to_stmt(), "book.id > ?");
     }
 
     #[test]
     fn greater_than_equals() {
-        assert_eq!(
-            Book::id.gte(&1).to_stmt(),
-            "book.id >= ?"
-        );
+        assert_eq!(Book::id.gte(&1).to_stmt(), "book.id >= ?");
     }
 
     #[test]
     fn less_than() {
-        assert_eq!(
-            Book::id.lt(&1).to_stmt(),
-            "book.id < ?"
-        )
+        assert_eq!(Book::id.lt(&1).to_stmt(), "book.id < ?")
     }
 
     #[test]
     fn less_than_equals() {
-        assert_eq!(
-            Book::id.lte(&1).to_stmt(),
-            "book.id <= ?"
-        )
+        assert_eq!(Book::id.lte(&1).to_stmt(), "book.id <= ?")
     }
 }

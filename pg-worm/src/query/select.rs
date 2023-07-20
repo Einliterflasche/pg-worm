@@ -1,9 +1,14 @@
-use std::{ops::Deref, marker::PhantomData, future::{IntoFuture, Future}, pin::Pin};
+use std::{
+    future::{Future, IntoFuture},
+    marker::PhantomData,
+    ops::Deref,
+    pin::Pin,
+};
 
 use tokio_postgres::Row;
 
+use super::{Executable, PushChunk, Query, ToQuery, Where};
 use crate::Column;
-use super::{Where, Query, PushChunk, ToQuery, Executable};
 
 /// A struct which holds the information needed to build
 /// a `SELECT` query.
@@ -13,27 +18,27 @@ pub struct Select<'a, T = Vec<Row>> {
     where_: Where<'a>,
     marker: PhantomData<T>,
     limit: Option<u64>,
-    offset: Option<u64>
+    offset: Option<u64>,
 }
 
-impl<'a, T> ToQuery<'a, T> for Select<'a, T> { }
+impl<'a, T> ToQuery<'a, T> for Select<'a, T> {}
 
 impl<'a, T> Select<'a, T> {
     #[doc(hidden)]
     pub fn new(cols: &[&dyn Deref<Target = Column>], from: &'static str) -> Select<'a, T> {
-        Select { 
-            cols: cols.into_iter().map(|i| (**i).clone()).collect(), 
+        Select {
+            cols: cols.iter().map(|i| (***i)).collect(),
             from,
             where_: Where::Empty,
             marker: PhantomData::<T>,
             limit: None,
-            offset: None
+            offset: None,
         }
     }
 
-    /// Add a `WHERE` clause to your query. 
-    /// 
-    /// If used multiple time, the conditions are joined 
+    /// Add a `WHERE` clause to your query.
+    ///
+    /// If used multiple time, the conditions are joined
     /// using `AND`.
     pub fn where_(mut self, where_: Where<'a>) -> Select<'a, T> {
         if self.where_.is_empty() {
@@ -65,9 +70,12 @@ impl<'a, T> PushChunk<'a> for Select<'a, T> {
         buffer.0.push_str("SELECT ");
 
         // Push the selected columns
-        let cols = self.cols.iter()
+        let cols = self
+            .cols
+            .iter()
             .map(|i| i.full_name())
-            .collect::<Vec<_>>().join(", ");
+            .collect::<Vec<_>>()
+            .join(", ");
         buffer.0.push_str(&cols);
 
         // Push the table from which the columns
@@ -95,25 +103,21 @@ impl<'a, T> PushChunk<'a> for Select<'a, T> {
     }
 }
 
-impl<'a, T: 'a> IntoFuture for Select<'a, T> 
+impl<'a, T: 'a> IntoFuture for Select<'a, T>
 where
     Select<'a, T>: ToQuery<'a, T>,
-    Query<'a, T>: Executable<Output = T>
+    Query<'a, T>: Executable<Output = T>,
 {
-    type IntoFuture =  Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
     type Output = Result<T, crate::Error>;
 
     fn into_future(mut self) -> Self::IntoFuture {
         let query = self.to_query();
-        Box::pin(
-            async move {
-                query.exec().await
-            }
-        )
+        Box::pin(async move { query.exec().await })
     }
 }
 
-#[cfg(test)] 
+#[cfg(test)]
 mod test {
     #![allow(dead_code)]
 
@@ -123,20 +127,18 @@ mod test {
     struct Book {
         #[column(primary_key, auto)]
         id: i64,
-        title: String
+        title: String,
     }
 
     #[test]
     fn select_limit() {
-        let query = Book::select()
-            .limit(3).to_query().0;
+        let query = Book::select().limit(3).to_query().0;
         assert_eq!(query, "SELECT book.id, book.title FROM book LIMIT 3");
     }
 
     #[test]
     fn select_offset() {
-        let query = Book::select()
-            .offset(4).to_query().0;
+        let query = Book::select().offset(4).to_query().0;
         assert_eq!(query, "SELECT book.id, book.title FROM book OFFSET 4");
     }
 }

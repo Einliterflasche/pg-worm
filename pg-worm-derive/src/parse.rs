@@ -92,7 +92,6 @@ impl ModelInput {
                 #columns
             }
 
-
             #try_from_row
             #model
         )
@@ -106,15 +105,15 @@ impl ModelInput {
         let creation_sql = self.table_creation_sql();
 
         let select = self.impl_select();
-        let _delete = self.impl_delete();
+        let delete = self.impl_delete();
         let update = self.impl_update();
 
         quote!(
             #[pg_worm::async_trait]
             impl pg_worm::Model<#ident> for #ident {
                 #select
-                //#delete                
                 #update
+                #delete
 
                 fn table_name() -> &'static str {
                     #table_name
@@ -145,8 +144,8 @@ impl ModelInput {
         let ident = self.ident();
 
         quote!(
-            fn delete() -> pg_worm::DeleteBuilder {
-                pg_worm::delete::<#ident>()
+            fn delete<'a>() -> pg_worm::query::Delete<'a> {
+                pg_worm::query::Delete::new(#ident::table_name())
             }
         )
     }

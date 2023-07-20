@@ -145,13 +145,13 @@ pub mod query;
 
 use std::ops::Deref;
 
-use query::Update;
 pub use query::{Column, TypedColumn};
+use query::{Delete, Update};
 
+use crate::query::Select;
 pub use async_trait::async_trait;
 pub use pg::{NoTls, Row};
 pub use pg_worm_derive::Model;
-use crate::query::Select;
 /// This crate's reexport of the `tokio_postgres` crate.
 pub use tokio_postgres as pg;
 
@@ -160,17 +160,13 @@ use pg::{tls::MakeTlsConnect, Client, Connection, Socket};
 use thiserror::Error;
 
 /// This module contains all necessary imports to get you started
-/// easily. 
+/// easily.
 pub mod prelude {
-    pub use crate::{
-        Model,
-        connect, 
-        NoTls,
-        force_register, 
-        register,
-    };
+    pub use crate::{connect, force_register, register, Model, NoTls};
 
-    pub use crate::query::{Column, TypedColumn, Select, Query, NoneSet, SomeSet, ToQuery, Executable};
+    pub use crate::query::{
+        Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, TypedColumn,
+    };
     pub use std::ops::Deref;
 }
 
@@ -187,7 +183,7 @@ pub enum Error {
     #[error("not connected to database")]
     NotConnected,
     /// Errors emitted by the Postgres server.
-    /// 
+    ///
     /// Most likely an invalid query.
     #[error("error communicating with database")]
     PostgresError(#[from] tokio_postgres::Error),
@@ -220,9 +216,14 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     fn select_one<'a>() -> Select<'a, Option<T>>;
 
     /// Start building an `UPDATE` query.
-    /// 
+    ///
     /// Returns the number of rows affected.
     fn update<'a>() -> Update<'a>;
+
+    /// Start building a `DELETE` query.
+    ///
+    /// Returns the number or rows affected.
+    fn delete<'a>() -> Delete<'a>;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();
