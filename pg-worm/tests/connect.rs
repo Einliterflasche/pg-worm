@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use pg_worm::prelude::*;
+use pg_worm::{prelude::*, query::Update};
 use tokio::try_join;
 
 #[derive(Model)]
@@ -62,6 +62,11 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         .where_(Book::title.eq(&"The Communist Manifesto".into()))
         .await?;
     assert!(manifesto.is_none());
+
+    let res = Book::update()
+        .set(Book::title, &"Trolled".into())
+        .await?;
+    assert_eq!(res, 3);
 
     Ok(())
 }

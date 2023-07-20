@@ -3,7 +3,7 @@ use std::{ops::Deref, marker::PhantomData, future::{IntoFuture, Future}, pin::Pi
 use tokio_postgres::Row;
 
 use crate::Column;
-use super::{Where, Query, PushChunk, Executable};
+use super::{Where, Query, PushChunk, ToQuery, Executable};
 
 /// A struct which holds the information needed to build
 /// a `SELECT` query.
@@ -15,6 +15,8 @@ pub struct Select<'a, T = Vec<Row>> {
     limit: Option<u64>,
     offset: Option<u64>
 }
+
+impl<'a, T> ToQuery<'a, T> for Select<'a, T> { }
 
 impl<'a, T> Select<'a, T> {
     #[doc(hidden)]
@@ -56,35 +58,6 @@ impl<'a, T> Select<'a, T> {
 
         self
     }
-
-    /// Convert to a query.
-    fn to_query(mut self) -> Query<'a, T> {
-        let mut query = Query::default();
-        self.push_to_buffer(&mut query);
-
-        // Since we change '?' to e.g. '$1' we need to
-        // reserve some more space to avoid reallocating the whole string.
-        const RESERVED: usize = 9;
-        let mut buf = String::with_capacity(query.0.len() + RESERVED);
-
-        let mut counter = 1;
-        let mut last_index = 0;
-
-        for (i, _) in query.0.match_indices("?") {
-            buf.push_str(&query.0[last_index..i]);
-            buf.push('$');
-            buf.push_str(&counter.to_string());
-            
-            counter += 1;
-            last_index = i + 1;
-        }
-        // Push the tail
-        buf.push_str(&query.0[last_index..]);
-        // Update the string to the one with $-like placeholders
-        query.0 = buf;
-
-        query
-    }
 }
 
 impl<'a, T> PushChunk<'a> for Select<'a, T> {
@@ -122,25 +95,28 @@ impl<'a, T> PushChunk<'a> for Select<'a, T> {
     }
 }
 
-impl<'a, T> IntoFuture for Select<'a, T>
-where 
-    Query<'a, T>: Executable,
-    T: 'a
+impl<'a, T: 'a> IntoFuture for Select<'a, T> 
+where
+    Select<'a, T>: ToQuery<'a, T>,
+    Query<'a, T>: Executable<Output = T>
 {
-    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
-    type Output = Result<<Query<'a, T> as Executable>::Output, crate::Error>;
+    type IntoFuture =  Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
+    type Output = Result<T, crate::Error>;
 
-    fn into_future(self) -> Self::IntoFuture {
+    fn into_future(mut self) -> Self::IntoFuture {
         let query = self.to_query();
-
-        Box::pin(async move {
-            query.exec().await
-        })
+        Box::pin(
+            async move {
+                query.exec().await
+            }
+        )
     }
 }
 
 #[cfg(test)] 
 mod test {
+    #![allow(dead_code)]
+
     use crate::prelude::*;
 
     #[derive(Model)]

@@ -145,12 +145,13 @@ pub mod query;
 
 use std::ops::Deref;
 
+use query::Update;
 pub use query::{Column, TypedColumn};
 
 pub use async_trait::async_trait;
 pub use pg::{NoTls, Row};
 pub use pg_worm_derive::Model;
-use prelude::Select;
+use crate::query::Select;
 /// This crate's reexport of the `tokio_postgres` crate.
 pub use tokio_postgres as pg;
 
@@ -169,7 +170,7 @@ pub mod prelude {
         register,
     };
 
-    pub use crate::query::{Column, TypedColumn, Select};
+    pub use crate::query::{Column, TypedColumn, Select, Query, NoneSet, SomeSet, ToQuery, Executable};
     pub use std::ops::Deref;
 }
 
@@ -217,6 +218,11 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     /// Start building a `SELECT` query which returns either
     /// one entity or `None`.
     fn select_one<'a>() -> Select<'a, Option<T>>;
+
+    /// Start building an `UPDATE` query.
+    /// 
+    /// Returns the number of rows affected.
+    fn update<'a>() -> Update<'a>;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();

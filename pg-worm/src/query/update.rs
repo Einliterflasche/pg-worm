@@ -1,0 +1,106 @@
+use std::{marker::PhantomData, future::{IntoFuture, Future}, pin::Pin};
+
+use tokio_postgres::types::ToSql;
+
+use crate::TypedColumn;
+
+use super::{Where, SqlChunk, PushChunk, push_all_with_sep, ToQuery, Query, Executable};
+
+/// State representing that an UPDATE 
+/// has been set.
+/// 
+/// `UPDATE` queries in this state cannot be executed.
+pub struct NoneSet;
+/// State representing that an UDPATE 
+/// has been set.
+pub struct SomeSet;
+
+/// A struct for building `UPDATE` queries. 
+/// 
+/// The query can only be executed once at least one
+/// update has been made.
+pub struct Update<'a, State = NoneSet> {
+    table: &'static str,
+    updates: Vec<SqlChunk<'a>>,
+    where_: Where<'a>,
+    state: PhantomData<State>
+}
+
+impl<'a> ToQuery<'a, u64> for Update<'a, SomeSet> { }
+
+impl<'a, T> Update<'a, T> {
+    /// Begin building a new `UPDATE` query.
+    pub fn new(table: &'static str) -> Update<'a, NoneSet> {
+        Update { 
+            table, 
+            updates: vec![],
+            where_: Where::Empty,
+            state: PhantomData::<NoneSet>
+        }
+    }
+
+    /// Add a `WHERE` to the query.
+    /// 
+    /// If called multiple times, the conditions are
+    /// joined using `AND`.
+    pub fn where_(mut self, where_: Where<'a>) -> Update<'a, T> {
+        self.where_ = self.where_.and(where_);
+
+        self
+    }
+
+    /// Add a `SET` instruction to your `UPDATE` query.
+    /// 
+    /// This function has to be called at least once before
+    /// you can execute the query.
+    pub fn set<U: ToSql + Sync>(mut self, col: TypedColumn<U>, value: &'a U) -> Update<'a, SomeSet> {
+        self.updates.push(
+            SqlChunk(
+                format!("{} = ?", col.column_name),
+                vec![value]
+            )
+        );
+
+        Update { 
+            state: PhantomData::<SomeSet>,
+            updates: self.updates,
+            where_: self.where_,
+            table: self.table
+        }
+    }
+}
+
+impl<'a> PushChunk<'a> for Update<'a, SomeSet> {
+    fn push_to_buffer<T>(&mut self, buffer: &mut super::Query<'a, T>) {
+        // Which table to update
+        buffer.0.push_str("UPDATE ");
+        buffer.0.push_str(self.table);
+
+        // Which updates to make
+        buffer.0.push_str(" SET ");
+        push_all_with_sep(&mut self.updates, buffer, ", ");
+
+        // Which rows to update
+        self.where_.push_to_buffer(buffer);
+    }
+}
+
+impl<'a> IntoFuture for Update<'a, SomeSet>
+where 
+    Update<'a, SomeSet>: ToQuery<'a, u64>,
+    Query<'a, u64>: Executable<Output = u64>
+{
+    type Output = Result<u64, crate::Error>;
+
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
+
+    fn into_future(mut self) -> Self::IntoFuture {
+        let query = self.to_query();
+
+        Box::pin(
+            async move {
+                query.exec().await
+            }
+        )
+    }
+}

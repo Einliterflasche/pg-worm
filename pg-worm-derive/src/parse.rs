@@ -114,7 +114,7 @@ impl ModelInput {
             impl pg_worm::Model<#ident> for #ident {
                 #select
                 //#delete                
-                //#update
+                #update
 
                 fn table_name() -> &'static str {
                     #table_name
@@ -135,8 +135,8 @@ impl ModelInput {
         let ident = self.ident();
 
         quote!(
-            fn update() -> pg_worm::UpdateBuilder {
-                pg_worm::update::<#ident>()
+            fn update<'a>() -> pg_worm::query::Update<'a, NoneSet> {
+                pg_worm::query::Update::<NoneSet>::new(#ident::table_name())
             }
         )
     }
@@ -163,6 +163,7 @@ impl ModelInput {
 
             fn select_one<'a>() -> pg_worm::query::Select<'a, Option<#ident>> {
                 pg_worm::query::Select::new(#ident::columns(), #ident::table_name())
+                    .limit(1)
             }
         )
     }

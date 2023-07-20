@@ -2,6 +2,7 @@
 //! as well as struct for representing columns.
 
 mod select;
+mod update;
 mod table;
 
 pub use table::{Column, TypedColumn};
@@ -14,6 +15,7 @@ use tokio_postgres::{types::ToSql, Row};
 use crate::_get_client;
 
 pub use select::Select;
+pub use update::{Update, NoneSet, SomeSet};
 
 /// A trait implemented by everything that goes inside a query.
 pub trait PushChunk<'a> {
@@ -42,8 +44,56 @@ pub struct Query<'a, T = Vec<Row>>(
     Vec<&'a (dyn ToSql + Sync)>, 
     PhantomData<T>
 );
-/// A basic chunk of SQL and it's params.
+
+/// A trait implemented by query builders
+pub trait ToQuery<'a, T>: PushChunk<'a> {
+
+    /// A default implementation for building a query which can then be executed.
+    fn to_query(&mut self) -> Query<'a, T> {
+        // Create a new query object.
+        let mut query = Query::default();
+
+        // Push the query statement and parameters.
+        self.push_to_buffer(&mut query);
+
+        // Replace question mark placeholders with the postgres ones
+        query.0 = replace_question_marks(query.0);
+
+        // Return the exectuable query.
+        query
+    }
+}
+
+/// A basic chunk of SQL and it's params. 
+/// 
+/// This is bundes the params with the relevant part of the statement
+/// and thus makes ordering them much easier. 
 pub struct SqlChunk<'a>(pub String, pub Vec<&'a (dyn ToSql + Sync)>);
+
+/// A generic implementation of `IntoFuture` for all viable query builders
+/// ensures that each can be built _and_ executed simply
+/// by calling `.await`.
+
+/// Push multiple `PushChunk` objects to a buffer with a separator
+/// between each of them. 
+/// 
+/// Like `Vec::join()`.
+fn push_all_with_sep<'a, T, U: PushChunk<'a>>(vec: &mut Vec<U>, buffer: &mut Query<'a, T>, sep: &str) {
+    if vec.is_empty() {
+        return
+    }
+
+    for i in vec {
+        i.push_to_buffer(buffer);
+        buffer.0.push_str(sep);
+    }
+
+    // Remove the last `sep` as it's not
+    // in between elements.
+    buffer.0.truncate(
+        buffer.0.len() - sep.len()
+    );
+}
 
 /// An enum representing the `WHERE` clause of a query.
 pub enum Where<'a> {
@@ -59,9 +109,41 @@ pub enum Where<'a> {
     Empty
 }
 
+/// Replace all `?` placeholders with the Postgres variant
+/// `$1`, `$2`, ... 
+fn replace_question_marks(stmt: String) -> String {
+    // Since we change '?' to e.g. '$1' we need to
+    // reserve some more space to avoid reallocating the whole string.
+    const RESERVED: usize = 9;
+    let mut buf = String::with_capacity(stmt.len() + RESERVED);
+
+    let mut counter = 1;
+    let mut last_index = 0;
+
+    for (i, _) in stmt.match_indices("?") {
+        buf.push_str(&stmt[last_index..i]);
+        buf.push('$');
+        buf.push_str(&counter.to_string());
+        
+        counter += 1;
+        last_index = i + 1;
+    }
+    // Push the tail
+    buf.push_str(&stmt[last_index..]);
+    
+    buf
+}
+
 impl<'a, T> Default for Query<'a, T> {
     fn default() -> Self {
         Self("".into(), vec![], PhantomData::<T>)
+    }
+}
+
+impl<'a> PushChunk<'a> for SqlChunk<'a> {
+    fn push_to_buffer<T>(&mut self, buffer: &mut Query<'a, T>) {
+        buffer.0.push_str(&self.0);
+        buffer.1.append(&mut self.1);
     }
 }
 
@@ -99,6 +181,19 @@ where
             .map(|i: Row| T::try_from(i))
             .next()
             .transpose()
+    }
+}
+
+#[async_trait]
+impl<'a> Executable for Query<'a, u64> {
+    type Output = u64;
+
+    async fn exec(self) -> Result<Self::Output, crate::Error> {
+        let client = _get_client()?;
+        
+        Ok(
+            client.execute(&self.0, &self.1).await?
+        )
     }
 }
 
@@ -143,22 +238,7 @@ impl<'a> Where<'a> {
         self.bitor(other)
     }
 
-    /// Push multiple `Where` objects to a buffer with a separator
-    /// between each of them. 
-    /// 
-    /// Like `Vec::join()`.
-    fn push_all_with_sep<T>(vec: &mut Vec<Where<'a>>, buffer: &mut Query<'a, T>, sep: &str) {
-        for i in vec {
-            i.push_to_buffer(buffer);
-            buffer.0.push_str(sep);
-        }
-
-        // Remove the last `sep` as it's not
-        // in between elements.
-        buffer.0.truncate(
-            buffer.0.len() - sep.len()
-        );
-    }
+    
 }
 
 impl<'a> Default for Where<'a> {
@@ -254,8 +334,7 @@ impl<'a> PushChunk<'a> for Where<'a> {
 
         match self {
             Raw(chunk) => {
-                buffer.0.push_str(&chunk.0);
-                buffer.1.append(&mut chunk.1);
+                chunk.push_to_buffer(buffer);
             },
             Not(inner) => {
                 buffer.0.push_str("NOT (");
@@ -264,12 +343,12 @@ impl<'a> PushChunk<'a> for Where<'a> {
             },
             And(vec) => {
                 buffer.0.push('(');
-                Where::push_all_with_sep(vec, buffer, ") AND (");
+                push_all_with_sep(vec, buffer, ") AND (");
                 buffer.0.push(')');
             },
             Or(vec) => {
                 buffer.0.push('(');
-                Where::push_all_with_sep(vec, buffer, ") OR (");
+                push_all_with_sep(vec, buffer, ") OR (");
                 buffer.0.push(')');
             },
             Empty => ()
