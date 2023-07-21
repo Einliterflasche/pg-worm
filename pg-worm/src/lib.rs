@@ -40,7 +40,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), pg_worm::Error> {
 //!     // First connect to your server. This can be only done once.
-//!     connect!("postgres://me:me@localhost:5432", NoTls).await?;
+//!     connect!("postgres://postgres:postgres@localhost:5432", NoTls).await?;
 //!
 //!     // Then, create tables for your models.
 //!     // Use `register!` if you want to fail if a
