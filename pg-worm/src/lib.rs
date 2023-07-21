@@ -145,6 +145,7 @@ pub mod query;
 
 use std::ops::Deref;
 
+use prelude::Query;
 pub use query::{Column, TypedColumn};
 use query::{Delete, Update};
 
@@ -156,13 +157,13 @@ pub use pg_worm_derive::Model;
 pub use tokio_postgres as pg;
 
 use once_cell::sync::OnceCell;
-use pg::{tls::MakeTlsConnect, Client, Connection, Socket};
+use pg::{tls::MakeTlsConnect, Client, Connection, Socket, types::ToSql};
 use thiserror::Error;
 
 /// This module contains all necessary imports to get you started
 /// easily.
 pub mod prelude {
-    pub use crate::{connect, force_register, register, Model, NoTls};
+    pub use crate::{connect, force_register, register, Model, FromRow, NoTls};
 
     pub use crate::query::{
         Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, TypedColumn,
@@ -188,6 +189,13 @@ pub enum Error {
     #[error("error communicating with database")]
     PostgresError(#[from] tokio_postgres::Error),
 }
+
+/// A trait signaling that a struct may be parsed from
+/// a Postgres Row. 
+/// 
+/// This being a new trait allows the exposure of a
+/// derive macro for it.
+pub trait FromRow: TryFrom<Row, Error = Error> { }
 
 /// This is the trait which you should derive for your model structs.
 ///
@@ -224,6 +232,14 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     ///
     /// Returns the number or rows affected.
     fn delete<'a>() -> Delete<'a>;
+
+    /// Build a raw query by passing in a statement along with
+    /// arguments. 
+    /// 
+    /// You can reference the params via `$1`, `$2` and so on
+    /// or by using question marks as placeholders. 
+    /// _Do not mix the approaches_.
+    fn query<'a>(_: impl Into<String>, _: Vec<&'a (dyn ToSql + Sync)>) -> Query<'a, Vec<T>>;
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::new();

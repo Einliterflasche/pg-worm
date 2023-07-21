@@ -107,6 +107,7 @@ impl ModelInput {
         let select = self.impl_select();
         let delete = self.impl_delete();
         let update = self.impl_update();
+        let query = self.impl_query();
 
         quote!(
             #[pg_worm::async_trait]
@@ -114,6 +115,7 @@ impl ModelInput {
                 #select
                 #update
                 #delete
+                #query
 
                 fn table_name() -> &'static str {
                     #table_name
@@ -126,6 +128,19 @@ impl ModelInput {
                 fn columns() -> &'static [&'static dyn Deref<Target = Column>] {
                     &#ident::COLUMNS
                 }
+            }
+        )
+    }
+
+    fn impl_query(&self) -> TokenStream {
+        let ident = self.ident();
+
+        quote!(
+            fn query<'a>(statement: impl Into<String>, params: Vec<&'a (dyn pg_worm::pg::types::ToSql + Sync)>) -> pg_worm::query::Query<'a, Vec<#ident>> {
+                pg_worm::query::Query::new(
+                    statement.into(),
+                    params
+                )
             }
         )
     }

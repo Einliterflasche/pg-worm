@@ -10,7 +10,7 @@ pub use table::{Column, TypedColumn};
 
 use std::{
     marker::PhantomData,
-    ops::{BitAnd, BitOr, Not},
+    ops::{BitAnd, BitOr, Not}, future::{IntoFuture, Future}, pin::Pin,
 };
 
 use async_trait::async_trait;
@@ -149,6 +149,13 @@ impl<'a, T> Default for Query<'a, T> {
     }
 }
 
+impl<'a, T> Query<'a, T> {
+    /// Create a new query by passing a raw statement as well as parameters.
+    pub fn new(stmt: String, params: Vec<&'a (dyn ToSql + Sync)> ) -> Query<'a, T> {
+        Query(stmt, params, PhantomData::<T>)
+    }
+}
+
 impl<'a> PushChunk<'a> for SqlChunk<'a> {
     fn push_to_buffer<T>(&mut self, buffer: &mut Query<'a, T>) {
         buffer.0.push_str(&self.0);
@@ -197,6 +204,24 @@ impl<'a> Executable for Query<'a, u64> {
         let client = _get_client()?;
 
         Ok(client.execute(&self.0, &self.1).await?)
+    }
+}
+
+/// Implement IntoFuture for Query so that any executable Query
+/// may be executed by calling `.await`.
+impl<'a, T: 'a> IntoFuture for Query<'a, T>
+where
+    Query<'a, T>: Executable<Output = T>
+{
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
+    type Output = Result<T, crate::Error>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(
+            async move {
+                self.exec().await
+            }
+        )
     }
 }
 

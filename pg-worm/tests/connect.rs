@@ -24,7 +24,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done once.
     connect!("postgres://me:me@localhost:5432", NoTls).await?;
 
-    // Then, register the model with the pg_worm client.
+    // Then, create the tables for your models.
     // Use `register!` if you want to fail if a
     // table with the same name already exists.
     //
@@ -40,7 +40,6 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     Author::insert("Stephen King").await?;
     Author::insert("Martin Luther King").await?;
     Author::insert("Karl Marx").await?;
-
     Book::insert(
         "Foo - Part I",
         "Subtitle".to_string(),
@@ -62,12 +61,17 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     assert!(manifesto.is_none());
 
     // Or update your records
-    let books_updated = Book::update().set(Book::title, &"Trolled".into()).await?;
+    let books_updated = Book::update()
+        .set(Book::title, &"Trolled".into())
+        .await?;
     assert_eq!(books_updated, 3);
+
+    // Or run a raw query which gets automagically parsed to `Vec<Book>`.
+    let res = Book::query("SELECT * FROM book", vec![]).await?;
+    assert_eq!(res.len(), 3);
 
     // Or delete them, after they have become useless
     let books_deleted = Book::delete().await?;
     assert_eq!(books_deleted, 3);
-
     Ok(())
 }
