@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::Deref};
+use std::{marker::PhantomData, ops::{Deref, Not}};
 
 use tokio_postgres::types::ToSql;
 
@@ -129,6 +129,36 @@ impl<T: ToSql + Sync + Send + 'static + PartialOrd> TypedColumn<T> {
             format!("{}.{} <= ?", self.table_name, self.column_name),
             vec![other],
         )
+    }
+}
+
+impl<'a, T: ToSql + Sync> TypedColumn<Option<T>> {
+    /// Check whether this column's value is `NULL`.
+    pub fn null(&self) -> Where<'a> {
+        Where::new(
+            format!("{}.{} IS NULL", self.table_name, self.column_name), 
+            vec![]
+        )
+    }
+
+    /// Check whether this column's value is `NOT NULL`
+    pub fn not_noll(&self) -> Where<'a> {
+        self.null().not()
+    }
+} 
+
+impl<'a, T: ToSql + Sync> TypedColumn<T> {
+    /// Check whether this column contains some value.
+    pub fn contains(&self, value: &'a T) -> Where<'a> {
+        Where::new(
+            format!("? = ANY({}.{})", self.table_name, self.column_name),
+            vec![value]
+        )
+    }
+
+    /// Check whether this column does `NOT` contain some value.
+    pub fn contains_not(&self, value: &'a T) -> Where<'a> {
+        self.contains(value).not()
     }
 }
 
