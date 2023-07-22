@@ -147,8 +147,8 @@ impl<'a, T: ToSql + Sync> TypedColumn<Option<T>> {
     }
 } 
 
-impl<'a, T: ToSql + Sync> TypedColumn<T> {
-    /// Check whether this column contains some value.
+impl<'a, T: ToSql + Sync> TypedColumn<Vec<T>> {
+    /// Check whether this column's array contains some value.
     pub fn contains(&self, value: &'a T) -> Where<'a> {
         Where::new(
             format!("? = ANY({}.{})", self.table_name, self.column_name),
@@ -156,7 +156,7 @@ impl<'a, T: ToSql + Sync> TypedColumn<T> {
         )
     }
 
-    /// Check whether this column does `NOT` contain some value.
+    /// Check whether this column's array does `NOT` contain some value.
     pub fn contains_not(&self, value: &'a T) -> Where<'a> {
         self.contains(value).not()
     }
@@ -238,6 +238,7 @@ mod tests {
     struct Book {
         id: i64,
         title: String,
+        pages: Vec<String>
     }
 
     #[test]
@@ -263,5 +264,15 @@ mod tests {
     #[test]
     fn less_than_equals() {
         assert_eq!(Book::id.lte(&1).to_stmt(), "book.id <= ?")
+    }
+
+    #[test]
+    fn complete_query() {
+        let q = Book::select()
+            .where_(Book::title.eq(&"The Communist Manifesto".into()))
+            .where_(Book::pages.contains(&"You have nothing to lose but your chains!".into()))
+            .where_(Book::id.gt(&3))
+            .to_query().0;
+        assert_eq!(q, "SELECT book.id, book.title, book.pages FROM book WHERE (book.title = $1) AND ($2 = ANY(book.pages)) AND (book.id > $3)");
     }
 }

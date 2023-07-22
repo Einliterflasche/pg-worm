@@ -54,9 +54,12 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     let books = Book::select().await?;
     assert_eq!(books.len(), 3);
 
-    // Or check whether your favorite book is listed
+    // Or check whether your favorite book is listed, 
+    // along some other arbitrary conditions
     let manifesto = Book::select_one()
         .where_(Book::title.eq(&"The Communist Manifesto".into()))
+        .where_(Book::pages.contains(&"You have nothing to lose but your chains!".into()))
+        .where_(Book::id.gt(&3))
         .await?;
     assert!(manifesto.is_none());
 
@@ -67,8 +70,10 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     assert_eq!(books_updated, 3);
 
     // Or run a raw query which gets automagically parsed to `Vec<Book>`.
-    let res = Book::query("SELECT * FROM book", vec![]).await?;
-    assert_eq!(res.len(), 3);
+    let complicated_books = Book::query("SELECT * FROM book", vec![]).await?;
+    assert_eq!(complicated_books.len(), 3);
+
+
 
     // Or delete them, after they have become useless
     let books_deleted = Book::delete().await?;

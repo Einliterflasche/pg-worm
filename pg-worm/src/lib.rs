@@ -372,11 +372,10 @@ where
 /// # Usage
 ///
 /// ```ignore
-/// use pg_worm::{Model, register};
+/// use pg_worm::prelude::*;
 ///
 /// #[derive(Model)]
 /// struct Foo {
-///     #[column(primary_key)]
 ///     id: i64
 /// }
 ///

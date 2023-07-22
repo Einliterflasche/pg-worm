@@ -152,7 +152,7 @@ impl<'a, T> Default for Query<'a, T> {
 impl<'a, T> Query<'a, T> {
     /// Create a new query by passing a raw statement as well as parameters.
     pub fn new(stmt: String, params: Vec<&'a (dyn ToSql + Sync)> ) -> Query<'a, T> {
-        Query(stmt, params, PhantomData::<T>)
+        Query(replace_question_marks(stmt), params, PhantomData::<T>)
     }
 }
 
