@@ -50,7 +50,7 @@ struct Author {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First create a connection. This can be only done once.
-    connect!("postgres://me:me@localhost:5432", NoTls).await?;
+    connect!("postgres://postgres:postgres@localhost:5432", NoTls).await?;
 
     // Then, create tables for your models. 
     // Use `register!` if you want to fail if a
