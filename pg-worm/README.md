@@ -5,10 +5,21 @@
 `pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
 Well, at least that's the goal. 
 
-This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) 
-and is intended to be used with [`tokio`](https://tokio.rs/).
+## Motivation
+
+Existing ORMs are not `async`, require you to write migrations or use a cli. 
+`pg_worm`'s explicit goal is to be easy and to require no setup beyond defining your types. 
+
+`pg_worm` also has no DSL which you need to learn.
+Everything you can do maps intuitively and directly to SQL expressions.
+
+And, last but not least, `pg_worm` **does not get in your way**. Instead of relying on weird DSL tricks to achieve complex queries, you can simply write your own SQL and still profit off automatic parsing, etc.
+
+But that's enough ranting, go ahead and try it!
 
 ## Usage
+This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) and is intended to be used with [`tokio`](https://tokio.rs/).
+
 Fortunately, using `pg_worm` is very easy.
 
 Simply derive the `Model` trait for your type, connect to your database 
@@ -104,10 +115,6 @@ Method | Description | Availability
 `set` | `SET` a column's value. Note: this method has to be called at least once before you can execute the query. | `Update`
 `limit`, `offset` | Attach a [`LIMIT` or `OFFSET`](https://www.postgresql.org/docs/current/queries-limit.html) to the query. | `Select`
 
-
-After having finished building your query, you can simply call `.await`. 
-This will turn the builder into a `Query` object which is then executed asynchronously.
-
 ## Filtering using `WHERE`
 `where_()` can be used to easily include `WHERE` clauses in your queries. 
 
@@ -140,6 +147,13 @@ Operator/Method | Description
 `!`, `not` | Negate a filter using a locigal `NOT`
 `&`, `and` | Combine two filters using a logical `AND`.
 `\|`, `or` | Combine two filters using a logical `OR`
+
+### Executing a query
+
+After having finished building your query, you can simply call `.await`. 
+This will turn the builder into a `Query` object which is then executed asynchronously.
+
+Executing a query will always result in a `Result`.
 
 ## Raw queries
 
