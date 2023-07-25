@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let book = Book::select_one()
         .where_(Book::title.eq(&"Foo - Part I".to_string()))
         .await?; // Option<Book>
-    assert!(book.is_some());postgresql limit delete
+    assert!(book.is_some());
 
     // Or update exsisting records:
     let books_updated = Book::update()
@@ -129,7 +129,7 @@ Function | Description | Availability
 `eq` | Checks for equality. | Any type
 `gt`, `gte`, `lt`, `lte` | Check whether this column's value is greater than, etc than some other value. | Any type which implement [`PartialOrd`](https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html). Note: It's not guaranteed that Postgres supports these operator for a type just because it's `PartialOrd`. Be sure to check the documentation beforehand.
 `null`, `not_null` | Checks whether a column is `NULL`. | Any `Option<T>`. All other types are not `NULL`able and thus guaranteed not to be `NULL`.
-`contains`, `contains_not` | Check whether this colum's array  contains some value or not. | Any `Vec<T>`.
+`contains`, `contains_not`, `contains_all`, `conatains_none`, `contains_any` | Array operations. Check whether this column's array contains a value, a value _not_, or any/all/none values of another array. | Any `Vec<T>`.
 
 ### Boolean logic
 
