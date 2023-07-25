@@ -65,15 +65,37 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
 
     // Or update your records
     let books_updated = Book::update()
-        .set(Book::title, &"Trolled".into())
+        .set(Book::title, &"The name of this book is a secret".into())
         .await?;
     assert_eq!(books_updated, 3);
 
     // Or run a raw query which gets automagically parsed to `Vec<Book>`.
-    let complicated_books = Book::query("SELECT * FROM book", vec![]).await?;
-    assert_eq!(complicated_books.len(), 3);
+    //
+    // NOTE: You have to pass the exact type that Postgres is 
+    // expecting. Doing otherwise will result in a runtime error.
+    let king_books = Book::query(r#"
+            SELECT * FROM book 
+            JOIN author ON author.id = book.author_id
+            WHERE POSITION(? in author.name) > 0 
+        "#, 
+        vec![&"King".to_string()]
+    ).await?;
+    assert_eq!(king_books.len(), 2);
 
+    // Or do some array operations
+    let page_1 = "Page 1".to_string();
+    let page_2 = "Page 2".to_string();
+    let pages = vec![&page_1, &page_2];
 
+    let any_page = Book::select_one()
+        .where_(Book::pages.contains_any(&pages))
+        .await?;
+    assert!(any_page.is_some());
+
+    let both_pages = Book::select_one()
+        .where_(Book::pages.contains_all(&pages))
+        .await?;
+    assert!(both_pages.is_none());
 
     // Or delete them, after they have become useless
     let books_deleted = Book::delete().await?;

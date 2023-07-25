@@ -236,9 +236,7 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     /// Build a raw query by passing in a statement along with
     /// arguments. 
     /// 
-    /// You can reference the params via `$1`, `$2` and so on
-    /// or by using question marks as placeholders. 
-    /// _Do not mix the approaches_.
+    /// You can reference the params by using `?` as a placeholder.
     fn query<'a>(_: impl Into<String>, _: Vec<&'a (dyn ToSql + Sync)>) -> Query<'a, Vec<T>>;
 }
 
@@ -278,9 +276,8 @@ where
     T: MakeTlsConnect<Socket>,
 {
     let (client, conn) = tokio_postgres::connect(config, tls).await?;
-    match CLIENT.set(client) {
-        Ok(_) => (),
-        Err(_) => return Err(Error::AlreadyConnected),
+    if let Err(_) = CLIENT.set(client) {
+        return Err(Error::AlreadyConnected)
     };
     Ok(conn)
 }

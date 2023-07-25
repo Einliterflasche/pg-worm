@@ -132,7 +132,7 @@ impl<T: ToSql + Sync + Send + 'static + PartialOrd> TypedColumn<T> {
     }
 }
 
-impl<'a, T: ToSql + Sync> TypedColumn<Option<T>> {
+impl<'a, T: ToSql + Sync + 'a> TypedColumn<Option<T>> {
     /// Check whether this column's value is `NULL`.
     pub fn null(&self) -> Where<'a> {
         Where::new(
@@ -147,7 +147,7 @@ impl<'a, T: ToSql + Sync> TypedColumn<Option<T>> {
     }
 } 
 
-impl<'a, T: ToSql + Sync> TypedColumn<Vec<T>> {
+impl<'a, T: ToSql + Sync + 'a> TypedColumn<Vec<T>> {
     /// Check whether this column's array contains some value.
     pub fn contains(&self, value: &'a T) -> Where<'a> {
         Where::new(
@@ -159,6 +159,30 @@ impl<'a, T: ToSql + Sync> TypedColumn<Vec<T>> {
     /// Check whether this column's array does `NOT` contain some value.
     pub fn contains_not(&self, value: &'a T) -> Where<'a> {
         self.contains(value).not()
+    }
+
+    /// Check whether this column's array contains any value of 
+    /// another array.
+    pub fn contains_any(&self, values: &'a Vec<&'a T>) -> Where<'a> {
+        Where::new(
+            format!("{}.{} && ?", self.table_name, self.column_name),
+            vec![values]
+        )
+    }
+
+    /// Check whether this column's array contains all values of
+    /// another array.
+    pub fn contains_all(&self, values: &'a Vec<&'a T>) -> Where<'a> {
+        Where::new(
+            format!("{}.{} @> ?", self.table_name, self.column_name), 
+            vec![values]
+        )
+    }
+
+    /// Check whether this column's array does not overlap
+    /// with another array, i.e. contains none of its values.
+    pub fn contains_none(&self, values: &'a Vec<&'a T>) -> Where<'a> {
+        self.contains_any(values).not()
     }
 }
 
