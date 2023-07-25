@@ -85,7 +85,10 @@ impl<'a> PushChunk<'a> for Update<'a, SomeSet> {
         push_all_with_sep(&mut self.updates, buffer, ", ");
 
         // Which rows to update
-        self.where_.push_to_buffer(buffer);
+        if !self.where_.is_empty() {
+            buffer.0.push_str(" WHERE ");
+            self.where_.push_to_buffer(buffer);
+        }
     }
 }
 

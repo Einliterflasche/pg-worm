@@ -19,10 +19,10 @@
 //! 
 //! #[derive(Model)]
 //! struct Book {
-//!     // An auto-generated primary key
+//!     // An auto-generated primary key column
 //!     #[column(primary_key, auto)]
 //!     id: i64,
-//!     title: String
+//!     title: String,
 //!     author_id: i64
 //! }
 //! 
@@ -30,8 +30,7 @@
 //! struct Author {
 //!     #[column(primary_key, auto)]
 //!     id: i64,
-//!     name: String,
-//!     age: i64
+//!     name: String
 //! }
 //! 
 //! #[tokio::main]
@@ -111,7 +110,7 @@
 //! 
 //! A practical example could look like this:
 //! 
-//! ```rust
+//! ```ignore
 //! let where_: Where<'_> = MyModel::my_field.eq(&5);
 //! ```
 //! ### Available methods
@@ -146,7 +145,7 @@
 //! 
 //! Though these features are nice, they are not sufficient for most applications. This is why you can easily execute custom queries and still take advantage of automatic parsing, etc:
 //! 
-//! ```rust
+//! ```ignore
 //! // NOTE: You have to pass the exact type that Postgres is 
 //! // expecting. Doing otherwise will result in a runtime error.
 //! let king_books = Book::query(r#"
