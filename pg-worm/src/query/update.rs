@@ -102,7 +102,7 @@ where
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
 
     fn into_future(mut self) -> Self::IntoFuture {
-        let query = self.to_query();
+        let mut query = self.to_query();
 
         Box::pin(async move { query.exec().await })
     }

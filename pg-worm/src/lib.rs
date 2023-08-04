@@ -36,7 +36,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // First create a connection. This can be only done once.
-//!     connect!("postgres://postgres:postgres@localhost:5432", NoTls).await?;
+//!     connect_pool(Config::from_str("postgres://postgres:postgres@localhost:5432")?).await?;
 //! 
 //!     // Then, create tables for your models. 
 //!     // Use `register!` if you want to fail if a
@@ -168,9 +168,10 @@ extern crate self as pg_worm;
 
 pub mod query;
 
-use std::ops::Deref;
+use std::{ops::Deref, pin::Pin};
 
-use prelude::Query;
+use deadpool_postgres::{ManagerConfig, Pool, Manager, Client as DpClient, Transaction as DpTransaction};
+use prelude::{Query, ToQuery, Executable};
 pub use query::{Column, TypedColumn};
 use query::{Delete, Update};
 
@@ -182,18 +183,21 @@ pub use pg_worm_derive::Model;
 pub use tokio_postgres as pg;
 
 use once_cell::sync::OnceCell;
-use pg::{tls::MakeTlsConnect, Client, Connection, Socket, types::ToSql};
+use pg::types::ToSql;
 use thiserror::Error;
 
 /// This module contains all necessary imports to get you started
 /// easily.
 pub mod prelude {
-    pub use crate::{connect, force_register, register, Model, FromRow, NoTls};
+    pub use crate::{force_register, register, Model, FromRow, NoTls, connect_pool, Transaction, Queryable};
 
     pub use crate::query::{
         Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, TypedColumn,
     };
     pub use std::ops::Deref;
+    pub use std::str::FromStr;
+
+    pub use tokio_postgres::Config;
 }
 
 /// An enum representing the errors which are emitted by this crate.
@@ -201,13 +205,19 @@ pub mod prelude {
 pub enum Error {
     /// Something went wrong while connection to the database.
     #[error("couldn't connect to database")]
-    ConnectionError,
+    NotConnected,
     /// There already is a connection to the database.
     #[error("already connected to database")]
     AlreadyConnected,
     /// No connection has yet been established.
     #[error("not connected to database")]
-    NotConnected,
+    ConnectionError(#[from] deadpool_postgres::CreatePoolError),
+    /// No connection object could be created.
+    #[error("couldn't build connection/config")]
+    ConnectionBuildError(#[from] deadpool_postgres::BuildError),
+    /// name
+    #[error("couldn't fetch connection from pool")]
+    PoolError(#[from] deadpool_postgres::PoolError),
     /// Errors emitted by the Postgres server.
     ///
     /// Most likely an invalid query.
@@ -222,12 +232,43 @@ pub enum Error {
 /// derive macro for it.
 pub trait FromRow: TryFrom<Row, Error = Error> { }
 
+///
+#[async_trait]
+pub trait Queryable {
+    /// Maps to tokio_postgres::Client::query.
+    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error>;
+    /// Maps to tokio_postgres::Client::execute.
+    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error>;
+}
+
+#[async_trait]
+impl<'a> Queryable for &Transaction<'a> {
+    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
+        Ok(self.transaction.query(stmt, params).await?)
+    }
+
+    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
+        Ok(self.transaction.execute(stmt, params).await?)
+    }
+}
+
+#[async_trait]
+impl<'a> Queryable for &DpClient{
+    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
+        Ok(self.query(stmt, params).await?)
+    }
+
+    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
+        Ok(self.execute(stmt, params).await?)
+    }
+}
+
 /// This is the trait which you should derive for your model structs.
 ///
 /// It provides the ORM functionality.
 ///
 #[async_trait]
-pub trait Model<T>: TryFrom<Row, Error = Error> {
+pub trait Model<T>: FromRow {
     /// This is a library function needed to derive the `Model`trait.
     ///
     /// *_DO NOT USE_*
@@ -265,71 +306,89 @@ pub trait Model<T>: TryFrom<Row, Error = Error> {
     fn query<'a>(_: impl Into<String>, _: Vec<&'a (dyn ToSql + Sync)>) -> Query<'a, Vec<T>>;
 }
 
-static CLIENT: OnceCell<Client> = OnceCell::new();
+static POOL: OnceCell<Pool> = OnceCell::new();
 
-/// Get a reference to the client, if a connection has been made.
-/// Returns `Err(Error::NotConnected)` otherwise.
-///
-/// **This is a private library function needed to derive
-/// the `Model` trait. Do not use!**
-#[doc(hidden)]
-#[inline]
-pub fn _get_client() -> Result<&'static Client, Error> {
-    if let Some(client) = CLIENT.get() {
-        Ok(client)
+/// Access the global connection pool.
+#[doc = "hidden"]
+pub fn get_pool() -> Result<&'static Pool, Error> { 
+    if let Some(pool) = POOL.get() { 
+        Ok(pool)
     } else {
         Err(Error::NotConnected)
     }
 }
 
-/// Connect the `pg_worm` client to a postgres database.
-///
-/// You need to *_activate the connection by spawning it off into a new thread_*, only then will the client actually work.
-///
-/// You can connect to a database only once. If you try to connect again,
-/// the function will return an error.
-///
-/// # Example
-/// ```ignore
-/// let conn = connect("my_db_url", NoTls).expect("db connection failed");
-/// tokio::spawn(async move {
-///     conn.await.expect("connection error")
-/// });
-/// ```
-pub async fn connect<T>(config: &str, tls: T) -> Result<Connection<Socket, T::Stream>, Error>
-where
-    T: MakeTlsConnect<Socket>,
-{
-    let (client, conn) = tokio_postgres::connect(config, tls).await?;
-    if let Err(_) = CLIENT.set(client) {
-        return Err(Error::AlreadyConnected)
-    };
-    Ok(conn)
+/// Try to fetch a client from the connection pool.
+pub async fn fetch_client() -> Result<DpClient, Error> { 
+    Ok(get_pool()?.get().await?)
 }
 
-/// Convenience macro for connecting the `pg-worm` client
-/// to a database server. Essentially writes the boilerplate
-/// code needed. See the [`tokio_postgres`](https://docs.rs/tokio-postgres/latest/tokio_postgres/config/struct.Config.html)
-/// documentation for more information on the config format.
-///
-/// Calls the [`connect()`] function.
-/// Needs `tokio` to work.
-///
-/// # Panics
-/// Panics when the connection is closed due to a fatal error.
-#[macro_export]
-macro_rules! connect {
-    ($config:literal, $tls:expr) => {
-        async {
-            match $crate::connect($config, $tls).await {
-                Ok(conn) => {
-                    tokio::spawn(async move { conn.await.expect("fatal connection error") });
-                    return Ok(());
-                }
-                Err(err) => return Err(err),
+/// Initialize a gobal pool connected to the database server. 
+pub async fn connect_pool(config: tokio_postgres::Config) -> Result<(), Error> {
+    let manager_config = ManagerConfig { recycling_method: deadpool_postgres::RecyclingMethod::Fast };
+    let manager = Manager::from_config(config, NoTls, manager_config);
+    let pool = Pool::builder(manager)
+        .build()?;
+
+    match POOL.set(pool) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(Error::AlreadyConnected)
+    }
+}
+
+/// Wrapper around the deadpool transaction which is
+/// itself a wrapper around the tokio-postgres transaction.
+/// 
+/// This struct allows creating transactions without 
+/// having to care about passing a client.
+pub struct Transaction<'a> {
+    _client: Pin<Box<DpClient>>,
+    transaction: DpTransaction<'a>
+}
+
+impl<'a> Transaction<'a> {
+    async fn new(client: DpClient) -> Result<Transaction<'a>, Error> {
+
+        let client_pointer = &client as *const _ as *mut DpClient;
+
+        // Trust me, bro
+        let transaction = unsafe { (*client_pointer).transaction().await? };
+
+        Ok(
+            Transaction {
+                _client: Box::pin(client),
+                transaction
             }
-        }
-    };
+        )
+    }
+
+    /// Begin a new transaction.
+    pub async fn begin() -> Result<Transaction<'a>, Error> { 
+        let client = fetch_client().await?;
+
+        Transaction::new(client).await
+    }
+
+    /// Rollback this transaction.
+    pub async fn rollback(self) -> Result<(), Error> {
+        Ok(self.transaction.rollback().await?)
+    }
+
+    /// Commit the transaction.
+    pub async fn commit(self) -> Result<(), Error> {
+        Ok(self.transaction.commit().await?)
+    }
+
+    /// 
+    pub async fn execute<'b, Q, T>(&self, mut query: Q) -> Result<T, Error>
+    where 
+        Q: ToQuery<'b, T>,
+        Query<'b, T>: Executable<Output = T>
+    {
+        let mut query = query.to_query();
+        query.exec_with(self).await
+
+    }
 }
 
 /// Register your model with the database.
@@ -355,7 +414,7 @@ pub async fn register_model<M: Model<M>>() -> Result<(), Error>
 where
     Error: From<<M as TryFrom<Row>>::Error>,
 {
-    let client = _get_client()?;
+    let client = fetch_client().await?;
     client.batch_execute(M::_table_creation_sql()).await?;
 
     Ok(())
@@ -367,7 +426,7 @@ pub async fn force_register_model<M: Model<M>>() -> Result<(), Error>
 where
     Error: From<<M as TryFrom<Row>>::Error>,
 {
-    let client = _get_client()?;
+    let client = fetch_client().await?;
     let query = format!(
         "DROP TABLE IF EXISTS {} CASCADE; ",
         M::columns()[0].table_name()

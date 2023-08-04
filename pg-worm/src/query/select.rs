@@ -103,7 +103,7 @@ impl<'a, T> PushChunk<'a> for Select<'a, T> {
     }
 }
 
-impl<'a, T: 'a> IntoFuture for Select<'a, T>
+impl<'a, T: Send + 'a> IntoFuture for Select<'a, T>
 where
     Select<'a, T>: ToQuery<'a, T>,
     Query<'a, T>: Executable<Output = T>,
@@ -112,7 +112,7 @@ where
     type Output = Result<T, crate::Error>;
 
     fn into_future(mut self) -> Self::IntoFuture {
-        let query = self.to_query();
+        let mut query = self.to_query();
         Box::pin(async move { query.exec().await })
     }
 }

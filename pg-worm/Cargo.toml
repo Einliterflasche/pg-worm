@@ -12,11 +12,12 @@ homepage = "https://github.com/Einliterflasche/pg-worm"
 
 [dependencies]
 thiserror = "1.0"
+deadpool-postgres = "0.10"
 tokio-postgres = "0.7"
 once_cell = "1.17"
 async-trait = "0.1"
 
-pg-worm-derive = "0.5"
+pg-worm-derive = { version = "0.5", path = "../pg-worm-derive" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

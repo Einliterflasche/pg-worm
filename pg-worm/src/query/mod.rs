@@ -16,7 +16,7 @@ use std::{
 use async_trait::async_trait;
 use tokio_postgres::{types::ToSql, Row};
 
-use crate::_get_client;
+use crate::{fetch_client, Queryable};
 
 pub use delete::Delete;
 pub use select::Select;
@@ -36,7 +36,13 @@ pub trait Executable {
     type Output;
 
     /// The actual function for executing a query.
-    async fn exec(self) -> Result<Self::Output, crate::Error>;
+    async fn exec(&mut self) -> Result<Self::Output, crate::Error> {
+        let client = fetch_client().await?;
+        self.exec_with(&client).await
+    }
+
+    ///
+    async fn exec_with(&mut self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error>;
 }
 
 /// A struct for storing a complete query along with
@@ -170,8 +176,7 @@ where
 {
     type Output = Vec<T>;
 
-    async fn exec(self) -> Result<Self::Output, crate::Error> {
-        let client = _get_client()?;
+    async fn exec_with(&mut self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error> {
         let rows = client.query(&self.0, &self.1).await?;
 
         rows.into_iter().map(|i| T::try_from(i)).collect()
@@ -185,8 +190,7 @@ where
 {
     type Output = Option<T>;
 
-    async fn exec(self) -> Result<Self::Output, crate::Error> {
-        let client = _get_client()?;
+    async fn exec_with(&mut self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error> {
         let rows = client.query(&self.0, &self.1).await?;
 
         rows.into_iter()
@@ -200,8 +204,7 @@ where
 impl<'a> Executable for Query<'a, u64> {
     type Output = u64;
 
-    async fn exec(self) -> Result<Self::Output, crate::Error> {
-        let client = _get_client()?;
+    async fn exec_with(&mut self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error> {
 
         Ok(client.execute(&self.0, &self.1).await?)
     }
@@ -209,14 +212,14 @@ impl<'a> Executable for Query<'a, u64> {
 
 /// Implement IntoFuture for Query so that any executable Query
 /// may be executed by calling `.await`.
-impl<'a, T: 'a> IntoFuture for Query<'a, T>
+impl<'a, T: Send + 'a> IntoFuture for Query<'a, T>
 where
     Query<'a, T>: Executable<Output = T>
 {
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
     type Output = Result<T, crate::Error>;
 
-    fn into_future(self) -> Self::IntoFuture {
+    fn into_future(mut self) -> Self::IntoFuture {
         Box::pin(
             async move {
                 self.exec().await

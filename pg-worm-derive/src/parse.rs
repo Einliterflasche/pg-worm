@@ -203,6 +203,8 @@ impl ModelInput {
                     Ok(res)
                 }
             }
+            
+            impl FromRow for #ident { }
         )
     }
 
@@ -295,7 +297,7 @@ impl ModelInput {
                 ) *
 
                 // Retrieve the client
-                let client = pg_worm::_get_client()?;
+                let client = pg_worm::fetch_client().await?;
 
                 // Execute the query
                 client.execute(
