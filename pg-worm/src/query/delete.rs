@@ -49,7 +49,7 @@ impl<'a> IntoFuture for Delete<'a> {
     type Output = Result<u64, crate::Error>;
 
     fn into_future(mut self) -> Self::IntoFuture {
-        let mut query = self.to_query();
+        let query = self.to_query();
 
         Box::pin(async move { query.exec().await })
     }

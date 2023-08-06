@@ -168,9 +168,9 @@ extern crate self as pg_worm;
 
 pub mod query;
 
-use std::{ops::Deref, pin::Pin};
+use std::{ops::Deref, pin::Pin, ptr::addr_of_mut, any::type_name};
 
-use deadpool_postgres::{ManagerConfig, Pool, Manager, Client as DpClient, Transaction as DpTransaction};
+use deadpool_postgres::{ManagerConfig, Pool, Manager, Client as DpClient, Transaction as DpTransaction, GenericClient, Object};
 use prelude::{Query, ToQuery, Executable};
 pub use query::{Column, TypedColumn};
 use query::{Delete, Update};
@@ -255,11 +255,11 @@ impl<'a> Queryable for &Transaction<'a> {
 #[async_trait]
 impl<'a> Queryable for &DpClient{
     async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
-        Ok(self.query(stmt, params).await?)
+        Ok((***self).query(stmt, params).await?)
     }
 
     async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
-        Ok(self.execute(stmt, params).await?)
+        Ok((***self).execute(stmt, params).await?)
     }
 }
 
@@ -339,24 +339,24 @@ pub async fn connect_pool(config: tokio_postgres::Config) -> Result<(), Error> {
 /// Wrapper around the deadpool transaction which is
 /// itself a wrapper around the tokio-postgres transaction.
 /// 
-/// This struct allows creating transactions without 
+/// This struct allows creatleting transactions without 
 /// having to care about passing a client.
 pub struct Transaction<'a> {
-    _client: Pin<Box<DpClient>>,
-    transaction: DpTransaction<'a>
+    transaction: DpTransaction<'a>,
+    _client: Pin<Box<DpClient>>
 }
 
 impl<'a> Transaction<'a> {
     async fn new(client: DpClient) -> Result<Transaction<'a>, Error> {
-
-        let client_pointer = &client as *const _ as *mut DpClient;
+        let client = Box::pin(client);
+        let client_pointer = (&*client) as *const Object as *mut Object;
 
         // Trust me, bro
-        let transaction = unsafe { (*client_pointer).transaction().await? };
+        let transaction = unsafe { &mut *client_pointer }.transaction().await?;
 
         Ok(
             Transaction {
-                _client: Box::pin(client),
+                _client: client,
                 transaction
             }
         )
@@ -385,7 +385,7 @@ impl<'a> Transaction<'a> {
         Q: ToQuery<'b, T>,
         Query<'b, T>: Executable<Output = T>
     {
-        let mut query = query.to_query();
+        let query = query.to_query();
         query.exec_with(self).await
 
     }

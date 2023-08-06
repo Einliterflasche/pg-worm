@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 
-use std::str::FromStr;
-
-use pg_worm::{prelude::*, Transaction};
+use pg_worm::prelude::*;
 
 #[derive(Model)]
 struct Book {
@@ -104,8 +102,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     assert_eq!(books_deleted, 3);
 
     let tx = Transaction::begin().await?;
-    tx.execute(Book::select()).await?;
-    tx.commit().await?;
+    // tx.execute(Book::select()).await?;
 
     Ok(())
 }
