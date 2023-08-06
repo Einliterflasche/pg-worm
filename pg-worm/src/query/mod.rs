@@ -9,8 +9,10 @@ mod update;
 pub use table::{Column, TypedColumn};
 
 use std::{
+    future::{Future, IntoFuture},
     marker::PhantomData,
-    ops::{BitAnd, BitOr, Not}, future::{IntoFuture, Future}, pin::Pin,
+    ops::{BitAnd, BitOr, Not},
+    pin::Pin,
 };
 
 use async_trait::async_trait;
@@ -42,7 +44,10 @@ pub trait Executable {
     }
 
     ///
-    async fn exec_with(&self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error>;
+    async fn exec_with(
+        &self,
+        client: impl Queryable + Send + Sync,
+    ) -> Result<Self::Output, crate::Error>;
 }
 
 /// A struct for storing a complete query along with
@@ -157,7 +162,7 @@ impl<'a, T> Default for Query<'a, T> {
 
 impl<'a, T> Query<'a, T> {
     /// Create a new query by passing a raw statement as well as parameters.
-    pub fn new(stmt: String, params: Vec<&'a (dyn ToSql + Sync)> ) -> Query<'a, T> {
+    pub fn new(stmt: String, params: Vec<&'a (dyn ToSql + Sync)>) -> Query<'a, T> {
         Query(replace_question_marks(stmt), params, PhantomData::<T>)
     }
 }
@@ -176,7 +181,10 @@ where
 {
     type Output = Vec<T>;
 
-    async fn exec_with(&self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error> {
+    async fn exec_with(
+        &self,
+        client: impl Queryable + Send + Sync,
+    ) -> Result<Self::Output, crate::Error> {
         let rows = client.query(&self.0, &self.1).await?;
 
         rows.into_iter().map(|i| T::try_from(i)).collect()
@@ -190,7 +198,10 @@ where
 {
     type Output = Option<T>;
 
-    async fn exec_with(&self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error> {
+    async fn exec_with(
+        &self,
+        client: impl Queryable + Send + Sync,
+    ) -> Result<Self::Output, crate::Error> {
         let rows = client.query(&self.0, &self.1).await?;
 
         rows.into_iter()
@@ -204,7 +215,10 @@ where
 impl<'a> Executable for Query<'a, u64> {
     type Output = u64;
 
-    async fn exec_with(&self, client: impl Queryable + Send + Sync) -> Result<Self::Output, crate::Error> {
+    async fn exec_with(
+        &self,
+        client: impl Queryable + Send + Sync,
+    ) -> Result<Self::Output, crate::Error> {
         Ok(client.execute(&self.0, &self.1).await?)
     }
 }
@@ -214,17 +228,13 @@ impl<'a> Executable for Query<'a, u64> {
 impl<'a, T: Send + 'a> IntoFuture for Query<'a, T>
 where
     Query<'a, T>: Executable<Output = T>,
-    T: Sync
+    T: Sync,
 {
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
     type Output = Result<T, crate::Error>;
 
     fn into_future(self) -> Self::IntoFuture {
-        Box::pin(
-            async move {
-                self.exec().await
-            }
-        )
+        Box::pin(async move { self.exec().await })
     }
 }
 

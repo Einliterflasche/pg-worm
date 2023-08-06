@@ -1,4 +1,7 @@
-use std::{marker::PhantomData, ops::{Deref, Not}};
+use std::{
+    marker::PhantomData,
+    ops::{Deref, Not},
+};
 
 use tokio_postgres::types::ToSql;
 
@@ -136,8 +139,8 @@ impl<'a, T: ToSql + Sync + 'a> TypedColumn<Option<T>> {
     /// Check whether this column's value is `NULL`.
     pub fn null(&self) -> Where<'a> {
         Where::new(
-            format!("{}.{} IS NULL", self.table_name, self.column_name), 
-            vec![]
+            format!("{}.{} IS NULL", self.table_name, self.column_name),
+            vec![],
         )
     }
 
@@ -145,14 +148,14 @@ impl<'a, T: ToSql + Sync + 'a> TypedColumn<Option<T>> {
     pub fn not_noll(&self) -> Where<'a> {
         self.null().not()
     }
-} 
+}
 
 impl<'a, T: ToSql + Sync + 'a> TypedColumn<Vec<T>> {
     /// Check whether this column's array contains some value.
     pub fn contains(&self, value: &'a T) -> Where<'a> {
         Where::new(
             format!("? = ANY({}.{})", self.table_name, self.column_name),
-            vec![value]
+            vec![value],
         )
     }
 
@@ -161,12 +164,12 @@ impl<'a, T: ToSql + Sync + 'a> TypedColumn<Vec<T>> {
         self.contains(value).not()
     }
 
-    /// Check whether this column's array contains any value of 
+    /// Check whether this column's array contains any value of
     /// another array.
     pub fn contains_any(&self, values: &'a Vec<&'a T>) -> Where<'a> {
         Where::new(
             format!("{}.{} && ?", self.table_name, self.column_name),
-            vec![values]
+            vec![values],
         )
     }
 
@@ -174,8 +177,8 @@ impl<'a, T: ToSql + Sync + 'a> TypedColumn<Vec<T>> {
     /// another array.
     pub fn contains_all(&self, values: &'a Vec<&'a T>) -> Where<'a> {
         Where::new(
-            format!("{}.{} @> ?", self.table_name, self.column_name), 
-            vec![values]
+            format!("{}.{} @> ?", self.table_name, self.column_name),
+            vec![values],
         )
     }
 
@@ -262,7 +265,7 @@ mod tests {
     struct Book {
         id: i64,
         title: String,
-        pages: Vec<String>
+        pages: Vec<String>,
     }
 
     #[test]
@@ -296,7 +299,8 @@ mod tests {
             .where_(Book::title.eq(&"The Communist Manifesto".into()))
             .where_(Book::pages.contains(&"You have nothing to lose but your chains!".into()))
             .where_(Book::id.gt(&3))
-            .to_query().0;
+            .to_query()
+            .0;
         assert_eq!(q, "SELECT book.id, book.title, book.pages FROM book WHERE (book.title = $1) AND ($2 = ANY(book.pages)) AND (book.id > $3)");
     }
 }

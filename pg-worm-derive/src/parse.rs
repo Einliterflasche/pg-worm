@@ -203,7 +203,7 @@ impl ModelInput {
                     Ok(res)
                 }
             }
-            
+
             impl FromRow for #ident { }
         )
     }

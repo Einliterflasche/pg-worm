@@ -22,7 +22,10 @@ struct Author {
 #[tokio::test]
 async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done once.
-    connect_pool(Config::from_str("postgres://postgres:postgres@localhost:5432")?).await?;
+    connect_pool(Config::from_str(
+        "postgres://postgres:postgres@localhost:5432",
+    )?)
+    .await?;
 
     // Then, create the tables for your models.
     // Use `register!` if you want to fail if a
@@ -54,7 +57,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     let books = Book::select().await?;
     assert_eq!(books.len(), 3);
 
-    // Or check whether your favorite book is listed, 
+    // Or check whether your favorite book is listed,
     // along some other arbitrary conditions
     let manifesto = Book::select_one()
         .where_(Book::title.eq(&"The Communist Manifesto".into()))
@@ -71,15 +74,17 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
 
     // Or run a raw query which gets automagically parsed to `Vec<Book>`.
     //
-    // NOTE: You have to pass the exact type that Postgres is 
+    // NOTE: You have to pass the exact type that Postgres is
     // expecting. Doing otherwise will result in a runtime error.
-    let king_books = Book::query(r#"
+    let king_books = Book::query(
+        r#"
             SELECT * FROM book 
             JOIN author ON author.id = book.author_id
             WHERE POSITION(? in author.name) > 0 
-        "#, 
-        vec![&"King".to_string()]
-    ).await?;
+        "#,
+        vec![&"King".to_string()],
+    )
+    .await?;
     assert_eq!(king_books.len(), 2);
 
     // Or do some array operations
@@ -102,7 +107,12 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     assert_eq!(books_deleted, 3);
 
     let tx = Transaction::begin().await?;
-    // tx.execute(Book::select()).await?;
+    tx.execute(
+        Book::update()
+            .where_(Book::title.eq(&"The name of this book is a secret".to_string()))
+            .set(Book::title, &"No longer a secret".to_string()),
+    )
+    .await?;
 
     Ok(())
 }
