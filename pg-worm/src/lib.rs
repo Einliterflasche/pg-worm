@@ -168,13 +168,13 @@ extern crate self as pg_worm;
 
 pub mod query;
 
-use std::{ops::Deref, pin::Pin};
+use std::ops::Deref;
 
 use deadpool_postgres::{
-    Client as DpClient, GenericClient, Manager, ManagerConfig, Object, Pool,
+    Client as DpClient, GenericClient, Manager, ManagerConfig, Pool,
     Transaction as DpTransaction,
 };
-use prelude::{Executable, Query, ToQuery};
+use prelude::Query;
 pub use query::{Column, TypedColumn};
 use query::{Delete, Update};
 
@@ -193,11 +193,11 @@ use thiserror::Error;
 /// easily.
 pub mod prelude {
     pub use crate::{
-        connect_pool, force_register, register, FromRow, Model, NoTls, Queryable, Transaction,
+        connect_pool, force_register, register, FromRow, Model, NoTls,
     };
 
     pub use crate::query::{
-        Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, TypedColumn,
+        Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, TypedColumn, Transaction,
     };
     pub use std::ops::Deref;
     pub use std::str::FromStr;
@@ -236,37 +236,6 @@ pub enum Error {
 /// This being a new trait allows the exposure of a
 /// derive macro for it.
 pub trait FromRow: TryFrom<Row, Error = Error> {}
-
-///
-#[async_trait]
-pub trait Queryable {
-    /// Maps to tokio_postgres::Client::query.
-    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error>;
-    /// Maps to tokio_postgres::Client::execute.
-    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error>;
-}
-
-#[async_trait]
-impl<'a> Queryable for &Transaction<'a> {
-    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
-        Ok(self.transaction.query(stmt, params).await?)
-    }
-
-    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
-        Ok(self.transaction.execute(stmt, params).await?)
-    }
-}
-
-#[async_trait]
-impl Queryable for &DpClient {
-    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
-        Ok((***self).query(stmt, params).await?)
-    }
-
-    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
-        Ok((***self).execute(stmt, params).await?)
-    }
-}
 
 /// This is the trait which you should derive for your model structs.
 ///
@@ -325,7 +294,7 @@ pub fn get_pool() -> Result<&'static Pool, Error> {
 
 /// Try to fetch a client from the connection pool.
 pub async fn fetch_client() -> Result<DpClient, Error> {
-    Ok(get_pool()?.get().await?)
+    get_pool()?.get().await.map_err(Error::from)
 }
 
 /// Initialize a gobal pool connected to the database server.
@@ -342,60 +311,7 @@ pub async fn connect_pool(config: tokio_postgres::Config) -> Result<(), Error> {
     }
 }
 
-/// Wrapper around the deadpool transaction which is
-/// itself a wrapper around the tokio-postgres transaction.
-///
-/// This struct allows creatleting transactions without
-/// having to care about passing a client.
-pub struct Transaction<'a> {
-    transaction: DpTransaction<'a>,
-    _client: Pin<Box<DpClient>>,
-}
-
-impl<'a> Transaction<'a> {
-    async fn new(client: DpClient) -> Result<Transaction<'a>, Error> {
-        let client = Box::pin(client);
-        let client_pointer = (&*client) as *const Object as *mut Object;
-
-        // Trust me, bro
-        let transaction = unsafe { &mut *client_pointer }.transaction().await?;
-
-        Ok(Transaction {
-            _client: client,
-            transaction,
-        })
-    }
-
-    /// Begin a new transaction.
-    pub async fn begin() -> Result<Transaction<'a>, Error> {
-        let client = fetch_client().await?;
-
-        Transaction::new(client).await
-    }
-
-    /// Rollback this transaction.
-    pub async fn rollback(self) -> Result<(), Error> {
-        Ok(self.transaction.rollback().await?)
-    }
-
-    /// Commit the transaction.
-    pub async fn commit(self) -> Result<(), Error> {
-        Ok(self.transaction.commit().await?)
-    }
-
-    ///
-    pub async fn execute<'b, Q, T>(&self, mut query: Q) -> Result<T, Error>
-    where
-        Q: ToQuery<'b, T>,
-        Query<'b, T>: Executable<Output = T>,
-    {
-        let query = query.to_query();
-        query.exec_with(self).await
-    }
-}
-
-/// Register your model with the database.
-/// This creates a table representing your model.
+/// Create a table for your model.
 ///
 /// Use the [`register!`] macro for a more convenient api.
 ///

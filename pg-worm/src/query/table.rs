@@ -189,6 +189,13 @@ impl<'a, T: ToSql + Sync + 'a> TypedColumn<Vec<T>> {
     }
 }
 
+impl<'a> TypedColumn<String> {
+    /// Check whethre a string contains a substring. Case sensitive.
+    pub fn contains(&self, other: &'a String) -> Where<'a> {
+        Where::new(format!("POSITION(? in {})", self.full_name()), vec![other])
+    }
+}
+
 impl<T: ToSql + Sync> Deref for TypedColumn<T> {
     type Target = Column;
 

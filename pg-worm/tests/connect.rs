@@ -102,17 +102,24 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         .await?;
     assert!(both_pages.is_none());
 
-    // Or delete them, after they have become useless
-    let books_deleted = Book::delete().await?;
-    assert_eq!(books_deleted, 3);
+    // You can even do transactions:
+    let transaction = Transaction::begin().await?;
+    // Delete all books (in the transaction)
+    transaction.execute(Book::delete()).await?;
+    // Check that no books are left (in the transaction)
+    let all_books_in_tx = transaction.execute(Book::select()).await?;
+    assert_eq!(all_books_in_tx.len(), 0);
 
-    let tx = Transaction::begin().await?;
-    tx.execute(
-        Book::update()
-            .where_(Book::title.eq(&"The name of this book is a secret".to_string()))
-            .set(Book::title, &"No longer a secret".to_string()),
-    )
-    .await?;
+    // Verify that they still exist *outside* the transaction:
+    let all_books_outside_tx = Book::select().await?;
+    assert_eq!(all_books_outside_tx.len(), 3);
+
+    // Commit the transaction
+    transaction.commit().await?;
+
+    // Verify that the books are gone (for good)
+    let all_books_after_tx = Book::select().await?;
+    assert_eq!(all_books_after_tx.len(), 0);
 
     Ok(())
 }

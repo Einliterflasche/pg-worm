@@ -5,6 +5,7 @@ mod delete;
 mod select;
 mod table;
 mod update;
+mod transaction;
 
 pub use table::{Column, TypedColumn};
 
@@ -16,18 +17,27 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tokio_postgres::{types::ToSql, Row};
+use tokio_postgres::{types::ToSql, Row, Transaction as PgTransaction};
 
-use crate::{fetch_client, Queryable};
+use crate::{fetch_client, Error, DpClient, DpTransaction};
 
 pub use delete::Delete;
 pub use select::Select;
 pub use update::{NoneSet, SomeSet, Update};
-
+pub use transaction::*;
 /// A trait implemented by everything that goes inside a query.
 pub trait PushChunk<'a> {
     /// Pushes the containing string and the params to the provided buffer.
     fn push_to_buffer<T>(&mut self, buffer: &mut Query<'a, T>);
+}
+
+/// A trait for abstracting over clients/transactions.
+#[async_trait]
+pub trait Executor {
+    /// Maps to tokio_postgres::Client::query.
+    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error>;
+    /// Maps to tokio_postgres::Client::execute.
+    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error>;
 }
 
 /// Trait used to mark exectuable queries. It is used
@@ -46,7 +56,7 @@ pub trait Executable {
     ///
     async fn exec_with(
         &self,
-        client: impl Queryable + Send + Sync,
+        client: impl Executor + Send + Sync,
     ) -> Result<Self::Output, crate::Error>;
 }
 
@@ -175,6 +185,28 @@ impl<'a> PushChunk<'a> for SqlChunk<'a> {
 }
 
 #[async_trait]
+impl<'a> Executor for &DpTransaction<'a> {
+    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
+        PgTransaction::query(&self, stmt, params).await.map_err(Error::from)
+    }
+
+    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
+        PgTransaction::execute(&self, stmt, params).await.map_err(Error::from)
+    }
+}
+
+#[async_trait]
+impl Executor for &DpClient {
+    async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
+        (***self).query(stmt, params).await.map_err(Error::from)
+    }
+
+    async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
+        (***self).execute(stmt, params).await.map_err(Error::from)
+    }
+}
+
+#[async_trait]
 impl<'a, T> Executable for Query<'a, Vec<T>>
 where
     T: TryFrom<Row, Error = crate::Error> + Send + Sync,
@@ -183,7 +215,7 @@ where
 
     async fn exec_with(
         &self,
-        client: impl Queryable + Send + Sync,
+        client: impl Executor + Send + Sync,
     ) -> Result<Self::Output, crate::Error> {
         let rows = client.query(&self.0, &self.1).await?;
 
@@ -200,7 +232,7 @@ where
 
     async fn exec_with(
         &self,
-        client: impl Queryable + Send + Sync,
+        client: impl Executor + Send + Sync,
     ) -> Result<Self::Output, crate::Error> {
         let rows = client.query(&self.0, &self.1).await?;
 
@@ -217,9 +249,9 @@ impl<'a> Executable for Query<'a, u64> {
 
     async fn exec_with(
         &self,
-        client: impl Queryable + Send + Sync,
+        client: impl Executor + Send + Sync,
     ) -> Result<Self::Output, crate::Error> {
-        Ok(client.execute(&self.0, &self.1).await?)
+        client.execute(&self.0, &self.1).await.map_err(crate::Error::from)
     }
 }
 
