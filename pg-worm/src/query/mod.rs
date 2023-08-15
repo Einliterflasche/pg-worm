@@ -187,13 +187,13 @@ impl<'a> PushChunk<'a> for SqlChunk<'a> {
 #[async_trait]
 impl<'a> Executor for &DpTransaction<'a> {
     async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
-        PgTransaction::query(&self, stmt, params)
+        PgTransaction::query(self, stmt, params)
             .await
             .map_err(Error::from)
     }
 
     async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
-        PgTransaction::execute(&self, stmt, params)
+        PgTransaction::execute(self, stmt, params)
             .await
             .map_err(Error::from)
     }

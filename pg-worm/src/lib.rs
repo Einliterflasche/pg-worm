@@ -178,7 +178,7 @@ pub mod query;
 use std::{ops::Deref, sync::OnceLock};
 
 use deadpool_postgres::{
-    Client as DpClient, GenericClient, Manager, ManagerConfig, Pool, Transaction as DpTransaction,
+    Client as DpClient, GenericClient, Pool, Transaction as DpTransaction,
 };
 use prelude::Query;
 pub use query::{Column, TypedColumn};
@@ -288,8 +288,8 @@ pub trait Model<T>: FromRow {
 
 static POOL: OnceLock<Pool> = OnceLock::new();
 
-#[doc(hidden)]
 /// Try to fetch a client from the connection pool.
+#[doc(hidden)]
 pub async fn fetch_client() -> Result<DpClient, Error> {
     POOL.get()
         .ok_or(Error::NotConnected)?
@@ -298,24 +298,10 @@ pub async fn fetch_client() -> Result<DpClient, Error> {
         .map_err(Error::from)
 }
 
-#[doc(hidden)]
 /// Hidden function so set the pool from the `config` module.
+#[doc(hidden)]
 pub fn set_pool(pool: Pool) -> Result<(), Error> {
     POOL.set(pool).map_err(|_| Error::AlreadyConnected)
-}
-
-/// Initialize a gobal pool connected to the database server.
-pub async fn connect_pool(config: tokio_postgres::Config) -> Result<(), Error> {
-    let manager_config = ManagerConfig {
-        recycling_method: deadpool_postgres::RecyclingMethod::Fast,
-    };
-    let manager = Manager::from_config(config, NoTls, manager_config);
-    let pool = Pool::builder(manager).build()?;
-
-    match POOL.set(pool) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(Error::AlreadyConnected),
-    }
 }
 
 /// Create a table for your model.
