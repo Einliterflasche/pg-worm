@@ -22,10 +22,7 @@ struct Author {
 #[tokio::test]
 async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done once.
-    connect_pool(Config::from_str(
-        "postgres://postgres:postgres@localhost:5432",
-    )?)
-    .await?;
+    Connection::to("postgres://postgres:postgres@localhost:5432").await?;
 
     // Then, create the tables for your models.
     // Use `register!` if you want to fail if a

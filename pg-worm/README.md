@@ -50,7 +50,7 @@ struct Author {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First create a connection. This can be only done once.
-    connect!("postgres://postgres:postgres@localhost:5432", NoTls).await?;
+    Connection::to("postgres://postgres:postgres@localhost:5432").await?;
 
     // Then, create tables for your models. 
     // Use `register!` if you want to fail if a
@@ -171,6 +171,9 @@ let king_books = Book::query(r#"
 ).await?;
 assert_eq!(king_books.len(), 2);
 ```
+
+## MSRV
+The minimum supported version of rust is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
 
 ## License
 This project is dual-licensed under the MIT and Apache 2.0 licenses.
