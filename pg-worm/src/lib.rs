@@ -1,4 +1,4 @@
-/*! 
+/*!
 # `pg-worm`
 
 ### *P*ost*g*reSQL's *W*orst *ORM*
@@ -172,14 +172,13 @@ This project is dual-licensed under the MIT and Apache 2.0 licenses.
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
 
-pub mod query;
 pub mod config;
+pub mod query;
 
 use std::{ops::Deref, sync::OnceLock};
 
 use deadpool_postgres::{
-    Client as DpClient, GenericClient, Manager, ManagerConfig, Pool,
-    Transaction as DpTransaction,
+    Client as DpClient, GenericClient, Manager, ManagerConfig, Pool, Transaction as DpTransaction,
 };
 use prelude::Query;
 pub use query::{Column, TypedColumn};
@@ -198,14 +197,12 @@ use thiserror::Error;
 /// This module contains all necessary imports to get you started
 /// easily.
 pub mod prelude {
-    pub use crate::{
-        force_register, register, FromRow, Model,
-    };
+    pub use crate::{force_register, register, FromRow, Model};
 
     pub use crate::config::Connection;
 
     pub use crate::query::{
-        Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, TypedColumn, Transaction,
+        Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, Transaction, TypedColumn,
     };
     pub use std::ops::Deref;
     pub use std::str::FromStr;
@@ -226,7 +223,7 @@ pub enum Error {
     /// No connection object could be created.
     #[error("couldn't build connection/config")]
     ConnectionBuildError(#[from] deadpool_postgres::BuildError),
-    /// Emitted 
+    /// Emitted
     #[error("invalid config")]
     ConfigError(#[from] deadpool_postgres::ConfigError),
     /// name
@@ -294,8 +291,8 @@ static POOL: OnceLock<Pool> = OnceLock::new();
 #[doc(hidden)]
 /// Try to fetch a client from the connection pool.
 pub async fn fetch_client() -> Result<DpClient, Error> {
-    POOL
-        .get().ok_or(Error::NotConnected)?
+    POOL.get()
+        .ok_or(Error::NotConnected)?
         .get()
         .await
         .map_err(Error::from)

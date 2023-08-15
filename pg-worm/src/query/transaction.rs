@@ -1,11 +1,13 @@
-use std::{ptr::drop_in_place, alloc::{dealloc, Layout, alloc, handle_alloc_error}};
+use std::{
+    alloc::{alloc, dealloc, handle_alloc_error, Layout},
+    ptr::drop_in_place,
+};
 
 use deadpool_postgres::{Client as DpClient, Transaction as DpTransaction};
 
 use crate::{fetch_client, Error};
 
-use super::{ToQuery, Query, Executable};
-
+use super::{Executable, Query, ToQuery};
 
 struct PinnedClient(pub *mut DpClient);
 
@@ -31,9 +33,9 @@ impl PinnedClient {
 
 impl Drop for PinnedClient {
     fn drop(&mut self) {
-        unsafe { 
+        unsafe {
             // Call `drop` on the client object to make sure
-            // it is properly cleaned up and 
+            // it is properly cleaned up and
             // returned to the pool.
             drop_in_place(self.0);
 
@@ -44,14 +46,13 @@ impl Drop for PinnedClient {
     }
 }
 
-
-/// A struct providing transaction functionality. 
-/// 
+/// A struct providing transaction functionality.
+///
 /// Use it to execute queries as part of this transaction.
 /// When you are done, commit using `.commit()`
 pub struct Transaction<'a> {
     transaction: DpTransaction<'a>,
-    _client: PinnedClient
+    _client: PinnedClient,
 }
 
 impl<'a> Transaction<'a> {
@@ -62,11 +63,14 @@ impl<'a> Transaction<'a> {
             // This shouldn't fail since the pointer in PinnedCliend
             // is guaranteed not to be null.
             &mut *client.0
-        }.transaction().await?;
+        }
+        .transaction()
+        .await?;
 
-        Ok(
-            Transaction { _client: client, transaction }
-        )
+        Ok(Transaction {
+            _client: client,
+            transaction,
+        })
     }
 
     /// Begin a new transaction.

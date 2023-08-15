@@ -15,7 +15,6 @@ thiserror = "1.0"
 deadpool-postgres = "0.10"
 tokio-postgres = "0.7"
 async-trait = "0.1"
-ouroboros = "0.17"
 
 pg-worm-derive = { version = "0.5", path = "../pg-worm-derive" }
 

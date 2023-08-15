@@ -4,8 +4,8 @@
 mod delete;
 mod select;
 mod table;
-mod update;
 mod transaction;
+mod update;
 
 pub use table::{Column, TypedColumn};
 
@@ -19,12 +19,12 @@ use std::{
 use async_trait::async_trait;
 use tokio_postgres::{types::ToSql, Row, Transaction as PgTransaction};
 
-use crate::{fetch_client, Error, DpClient, DpTransaction};
+use crate::{fetch_client, DpClient, DpTransaction, Error};
 
 pub use delete::Delete;
 pub use select::Select;
-pub use update::{NoneSet, SomeSet, Update};
 pub use transaction::*;
+pub use update::{NoneSet, SomeSet, Update};
 /// A trait implemented by everything that goes inside a query.
 pub trait PushChunk<'a> {
     /// Pushes the containing string and the params to the provided buffer.
@@ -187,11 +187,15 @@ impl<'a> PushChunk<'a> for SqlChunk<'a> {
 #[async_trait]
 impl<'a> Executor for &DpTransaction<'a> {
     async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
-        PgTransaction::query(&self, stmt, params).await.map_err(Error::from)
+        PgTransaction::query(&self, stmt, params)
+            .await
+            .map_err(Error::from)
     }
 
     async fn execute(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error> {
-        PgTransaction::execute(&self, stmt, params).await.map_err(Error::from)
+        PgTransaction::execute(&self, stmt, params)
+            .await
+            .map_err(Error::from)
     }
 }
 
@@ -251,7 +255,10 @@ impl<'a> Executable for Query<'a, u64> {
         &self,
         client: impl Executor + Send + Sync,
     ) -> Result<Self::Output, crate::Error> {
-        client.execute(&self.0, &self.1).await.map_err(crate::Error::from)
+        client
+            .execute(&self.0, &self.1)
+            .await
+            .map_err(crate::Error::from)
     }
 }
 
