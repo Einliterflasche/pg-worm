@@ -140,21 +140,18 @@ fn replace_question_marks(stmt: String) -> String {
     const RESERVED: usize = 9;
     let mut buf = String::with_capacity(stmt.len() + RESERVED);
 
-    // Tracking variables
-    let mut counter = 1;
+    // Tracking variable
     let mut last_index = 0;
 
     // Looping through all '?' in the string
-    for (i, _) in stmt.match_indices('?') {
+    for (count, (i, _)) in stmt.match_indices('?').enumerate() {
         // Push everything until the '?'
         buf.push_str(&stmt[last_index..i]);
 
         // Push '$' including the number
         buf.push('$');
-        buf.push_str(&counter.to_string());
+        buf.push_str(&(count + 1).to_string());
 
-        // Update variables
-        counter += 1;
         last_index = i + 1;
     }
 

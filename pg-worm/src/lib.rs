@@ -177,9 +177,7 @@ pub mod query;
 
 use std::{ops::Deref, sync::OnceLock};
 
-use deadpool_postgres::{
-    Client as DpClient, GenericClient, Pool, Transaction as DpTransaction,
-};
+use deadpool_postgres::{Client as DpClient, GenericClient, Pool, Transaction as DpTransaction};
 use prelude::Query;
 pub use query::{Column, TypedColumn};
 use query::{Delete, Update};
