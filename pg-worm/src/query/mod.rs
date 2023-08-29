@@ -25,13 +25,16 @@ pub use delete::Delete;
 pub use select::Select;
 pub use transaction::*;
 pub use update::{NoneSet, SomeSet, Update};
+
 /// A trait implemented by everything that goes inside a query.
+#[doc(hidden)]
 pub trait PushChunk<'a> {
     /// Pushes the containing string and the params to the provided buffer.
     fn push_to_buffer<T>(&mut self, buffer: &mut Query<'a, T>);
 }
 
-/// A trait for abstracting over clients/transactions.
+/// A trait abstracting over `Client`s and `Transaction`s.
+#[doc(hidden)]
 #[async_trait]
 pub trait Executor {
     /// Maps to tokio_postgres::Client::query.
@@ -53,7 +56,7 @@ pub trait Executable {
         self.exec_with(&client).await
     }
 
-    ///
+    /// Execute the query given any viable `Executor`
     async fn exec_with(
         &self,
         client: impl Executor + Send + Sync,
@@ -89,6 +92,7 @@ pub trait ToQuery<'a, T>: PushChunk<'a> {
 ///
 /// This is bundes the params with the relevant part of the statement
 /// and thus makes ordering them much easier.
+#[doc(hidden)]
 pub struct SqlChunk<'a>(pub String, pub Vec<&'a (dyn ToSql + Sync)>);
 
 /// A generic implementation of `IntoFuture` for all viable query builders

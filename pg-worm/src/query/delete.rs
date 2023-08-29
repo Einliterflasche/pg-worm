@@ -3,6 +3,8 @@ use std::{
     pin::Pin,
 };
 
+use tokio_postgres::types::ToSql;
+
 use super::{Executable, PushChunk, ToQuery, Where};
 
 /// A struct for building `DELETE` queries.
@@ -29,6 +31,33 @@ impl<'a> Delete<'a> {
         self.where_ = self.where_.and(where_);
 
         self
+    }
+
+    /// Add a raw `WHERE` clause to your query.
+    ///
+    /// You can reference the `params` by using the `?` placeholder in your statement.
+    ///
+    /// Note: you need to pass the exact types Postgres is expecting.
+    /// Failure to do so will result in (sometimes confusing) runtime errors.
+    ///
+    /// Otherwise this behaves exactly like `where_`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Book::select()
+    ///     .where_(Book::id.neq(&3))
+    ///     .where_raw("complex_function(book.title, ?, ?)", vec![&true, &"Foobar"])
+    ///     .await?;
+    /// ```
+    pub fn where_raw(
+        self,
+        statement: impl Into<String>,
+        params: Vec<&'a (dyn ToSql + Sync)>,
+    ) -> Delete<'a> {
+        let where_ = Where::new(statement.into(), params);
+
+        self.where_(where_)
     }
 }
 

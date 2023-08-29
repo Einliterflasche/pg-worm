@@ -1,8 +1,8 @@
-use darling::{ast::Data, FromDeriveInput, FromField};
+use darling::{ast::Data, Error, FromDeriveInput, FromField};
 use postgres_types::Type;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{GenericArgument, Ident, PathArguments};
+use syn::{Ident, PathArguments};
 
 #[derive(FromDeriveInput)]
 #[darling(attributes(table), supports(struct_named))]
@@ -18,7 +18,6 @@ pub struct ModelInput {
 pub struct ModelField {
     ident: Option<syn::Ident>,
     ty: syn::Type,
-    dtype: Option<String>,
     column_name: Option<String>,
     #[darling(default)]
     auto: bool,
@@ -64,15 +63,15 @@ impl ModelInput {
 
     /// Generate the SQL statement needed to create
     /// the table corresponding to the input.
-    fn table_creation_sql(&self) -> String {
-        format!(
+    fn table_creation_sql(&self) -> Result<String, Error> {
+        Ok(format!(
             "CREATE TABLE {} ({})",
             self.table_name(),
             self.all_fields()
                 .map(|f| f.column_creation_sql())
-                .collect::<Vec<String>>()
+                .collect::<Result<Vec<String>, Error>>()?
                 .join(", ")
-        )
+        ))
     }
 
     /// Generate all code needed.
@@ -102,7 +101,10 @@ impl ModelInput {
     fn impl_model(&self) -> TokenStream {
         let ident = self.ident();
         let table_name = self.table_name();
-        let creation_sql = self.table_creation_sql();
+        let creation_sql = match self.table_creation_sql() {
+            Ok(res) => quote!(#res),
+            Err(err) => err.write_errors(),
+        };
 
         let select = self.impl_select();
         let delete = self.impl_delete();
@@ -314,6 +316,12 @@ impl ModelInput {
     }
 }
 
+macro_rules! spanned_error {
+    ($msg:expr, $err:expr) => {
+        return Err(darling::Error::custom($msg).with_span($err))
+    };
+}
+
 impl ModelField {
     /// Initialization function called before each
     /// field is stored.
@@ -322,10 +330,12 @@ impl ModelField {
 
         // Extract relevant type from the path
         let syn::Type::Path(path) = ty else {
-            panic!("field type must be valid path");
+            spanned_error!("unsupported type", &ty)
         };
         let path = &path.path;
-        let last_seg = path.segments.last().expect("must provide type");
+        let Some(last_seg) = path.segments.last() else {
+            spanned_error!("invalid path (needs at least one segment)", &ty)
+        };
 
         match last_seg.ident.to_string().as_str() {
             // If it's an Option<T>, set the field nullable
@@ -354,102 +364,61 @@ impl ModelField {
         self.ident().to_string().to_lowercase()
     }
 
-    /// Get the corresponding column's PostgreSQL datatype.
-    fn pg_datatype(&self) -> Type {
-        fn from_str(ty: &str) -> Type {
-            match ty {
-                "bool" | "boolean" => Type::BOOL,
-                "text" => Type::TEXT,
-                "int" | "integer" | "int4" => Type::INT4,
-                "bigint" | "int8" => Type::INT8,
-                "smallint" | "int2" => Type::INT2,
-                "real" => Type::FLOAT4,
-                "double precision" => Type::FLOAT8,
-                "bigserial" => Type::INT8,
-                _ => panic!("couldn't find postgres type `{}`", ty),
-            }
-        }
+    /// Get the corresponding postgres type
+    fn try_pg_datatype(&self) -> Result<Type, Error> {
+        let ty = self.ty.clone();
 
-        fn from_type(ty: &Ident) -> Type {
-            match ty.to_string().as_str() {
-                "String" => Type::TEXT,
-                "i32" => Type::INT4,
-                "i64" => Type::INT8,
-                "f32" => Type::FLOAT4,
-                "f64" => Type::FLOAT8,
-                "bool" => Type::BOOL,
-                _ => panic!("cannot map rust type to postgres type: {ty}"),
-            }
-        }
-
-        if let Some(dtype) = &self.dtype {
-            return from_str(dtype.as_str());
-        }
-
-        let syn::Type::Path(type_path) = &self.ty else {
-            panic!("field type must be path; no reference, impl, etc. allowed")
+        let syn::Type::Path(path) = &self.ty else {
+            spanned_error!("pg-worm: unsupported type, must be a TypePath", &ty)
         };
 
-        let segment = type_path
-            .path
-            .segments
-            .last()
-            .expect("field type must have a last segment");
-        let args = &segment.arguments;
+        let Some(segment) = path.path.segments.last() else {
+            spanned_error!("pg-worm: unsupported type path, must have at least one segment", &ty)
+        };
 
-        if segment.ident.to_string().as_str() == "Option" {
-            // Extract `T` from `Option<T>`
-            let PathArguments::AngleBracketed(args) = args else {
-                panic!("field of type option needs angle bracketed argument")
-            };
-            let GenericArgument::Type(arg) = args.args.first().expect("Option needs to have generic argument") else {
-                panic!("generic argument for Option must be concrete type")
-            };
-            let syn::Type::Path(type_path) = arg else {
-                panic!("generic arg for Option must be path")
+        let mut id = &segment.ident;
+
+        if self.array || self.nullable {
+            let PathArguments::AngleBracketed(args) = &segment.arguments else {
+                spanned_error!("pg-worm: unsupported type, Option/Vec need generic argument", &ty)
             };
 
-            let ident = &type_path
-                .path
-                .segments
-                .first()
-                .expect("generic arg for Option must have segment")
-                .ident;
+            let Some(arg) = args.args.first() else {
+                spanned_error!("pg-worm: unsupported type, Option/Vec need generic argument", &ty)
+            };
 
-            return from_type(ident);
+            let syn::GenericArgument::Type(arg_type) = arg else {
+                spanned_error!("pg-worm: unsupported Option/Vec generic argument, must be valid type", &ty)
+            };
+
+            let syn::Type::Path(path) = &arg_type else {
+                spanned_error!("pg-worm: unsupported type, must be a TypePath", &ty)
+            };
+
+            let Some(segment) = path.path.segments.last() else {
+                spanned_error!("pg-worm: unsupported type path, must have at least one segment", &ty)
+            };
+
+            id = &segment.ident;
         }
 
-        if segment.ident.to_string().as_str() == "Vec" {
-            // Extract `T` from `Option<T>`
-            let PathArguments::AngleBracketed(args) = args else {
-                panic!("field of type Vec needs angle bracketed argument")
-            };
-            let GenericArgument::Type(arg) = args.args.first().expect("Vec needs to have generic argument") else {
-                panic!("generic argument for Vec must be concrete type")
-            };
-            let syn::Type::Path(type_path) = arg else {
-                panic!("generic arg for Vec must be path")
-            };
-
-            let ident = &type_path
-                .path
-                .segments
-                .first()
-                .expect("generic arg for Vec must have segment")
-                .ident;
-
-            return from_type(ident);
-        }
-
-        from_type(&segment.ident)
+        Ok(match id.to_string().as_ref() {
+            "String" => Type::TEXT,
+            "i32" => Type::INT4,
+            "i64" => Type::INT8,
+            "f32" => Type::FLOAT4,
+            "f64" => Type::FLOAT8,
+            "bool" => Type::BOOL,
+            _ => spanned_error!("pg-worm: unsupported type, check docs", &ty),
+        })
     }
 
     /// Get the SQL representing the column needed
     /// for creating a table.
-    fn column_creation_sql(&self) -> String {
+    fn column_creation_sql(&self) -> Result<String, Error> {
         // The list of "args" for the sql statement.
         // Includes at least the column name and datatype.
-        let mut args = vec![self.column_name(), self.pg_datatype().to_string()];
+        let mut args = vec![self.column_name(), self.try_pg_datatype()?.to_string()];
 
         // This macro allows adding an arg to the list
         // under a given condition.
@@ -469,7 +438,7 @@ impl ModelField {
         arg!(!(self.primary_key || self.nullable), "NOT NULL");
 
         // Join the args, seperated by a space and return them
-        args.join(" ")
+        Ok(args.join(" "))
     }
 
     /// The datatype which should be provided when

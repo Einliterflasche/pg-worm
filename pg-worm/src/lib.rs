@@ -1,31 +1,43 @@
 /*!
 # `pg-worm`
+[![Latest Version](https://img.shields.io/crates/v/pg-worm.svg)](https://crates.io/crates/pg-worm)
+![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg) 
+[![docs](https://docs.rs/pg-worm/badge.svg)](https://docs.rs/pg-worm)
+[![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ### *P*ost*g*reSQL's *W*orst *ORM*
-
 `pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
-Well, at least that's the goal.
+Well, at least that's the goal. 
 
-This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html)
-and is intended to be used with [`tokio`](https://tokio.rs/).
+## Features/Why `pg-worm?
+
+- Existing ORMs are not **`async`**, require you to write migrations or use a cli. 
+`pg-worm's explicit goal is to be **easy** and to require **no setup** beyond defining your types. 
+
+- `pg-worm also features **built-in pooling** and a **concise syntax**.
+
+- `pg-worm **doesn't get in your way** - easily include raw queries while still profiting off the other features.
 
 ## Usage
-Fortunately, using `pg_worm` is very easy.
+This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) and is intended to be used with [`tokio`](https://tokio.rs/).
 
-Simply derive the [`Model`] trait for your type, connect to your database
+Fortunately, using `pg-worm is very easy.
+
+Simply derive the `Model` trait for your type, connect to your database 
 and you are ready to go!
 
-Here's a quick example:
+Here's a quick example: 
 
 ```rust
+// Import the prelude to get started quickly
 use pg_worm::prelude::*;
 
 #[derive(Model)]
 struct Book {
-    // An auto-generated primary key column
+    // An auto-generated primary key
     #[column(primary_key, auto)]
     id: i64,
-    title: String,
+    title: String
     author_id: i64
 }
 
@@ -33,7 +45,8 @@ struct Book {
 struct Author {
     #[column(primary_key, auto)]
     id: i64,
-    name: String
+    name: String,
+    age: i64
 }
 
 #[tokio::main]
@@ -41,15 +54,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First create a connection. This can be only done once.
     Connection::to("postgres://postgres:postgres@localhost:5432").await?;
 
-    // Then, create tables for your models.
-    // Use `register!` if you want to fail if a
+    // Then, create tables for your models. 
+    // Use `try_create_table!` if you want to fail if a
     // table with the same name already exists.
     //
-    // `force_register` drops the old table,
+    // `force_create_table` drops the old table,
     // which is useful for development.
     //
     // If your tables already exist, skip this part.
-    force_register!(Author, Book)?;
+    force_create_table!(Author, Book).await?;
 
     // Next, insert some data.
     // This works by passing values for all
@@ -93,29 +106,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 If you want to see more code examples, have a look at the [tests directory](https://github.com/Einliterflasche/pg-worm/tree/main/pg-worm/tests).
 
 ## Query Builders
-As you can see in the above example, `pg_worm` allows you to build queries by chaining methods on so called 'builders'.
-For each query type `pg_worm` provides a respective builder (except for `INSERT` which is handled differently).
+As you can see above, `pg-worm allows you to build queries by chaining methods on so called 'builders'. 
+For each query type `pg-worm provides a respective builder (except for `INSERT` which is handled differently).
 
 These builders expose a set of methods for building queries. Here's a list of them:
 
 Method | Description | Availability
 -------|-------------|-------------
-`where_` | Attach a `WHERE` clause to the query. | All builders ([`Select`], [`Update`], [`Delete`])
+`where_` | Attach a `WHERE` clause to the query. | All builders (`Select`, `Update`, `Delete`)
+`where_raw` | Same as `where_` but you can pass raw SQL. | All builders (`Select`, `Update`, `Delete`) 
 `set` | `SET` a column's value. Note: this method has to be called at least once before you can execute the query. | `Update`
 `limit`, `offset` | Attach a [`LIMIT` or `OFFSET`](https://www.postgresql.org/docs/current/queries-limit.html) to the query. | `Select`
 
 ## Filtering using `WHERE`
-`where_()` can be used to easily include `WHERE` clauses in your queries.
+`.where_()` can be used to easily include `WHERE` clauses in your queries. 
 
-This is done by passing a [`Where`] object which can be constructed by calling methods on the respective column.
-`pg_worm` automatically constructs a constant for each field
+This is done by passing a `Where` object which can be constructed by calling methods on the respective column. 
+`pg-worm automatically constructs a constant for each field 
 of your `Model`.
 
-A practical example could look like this:
+A practical example would look like this:
 
-```ignore
+```rust
 let where_: Where<'_> = MyModel::my_field.eq(&5);
 ```
+
 ### Available methods
 
 Currently, the following methods are implemented:
@@ -123,7 +138,7 @@ Currently, the following methods are implemented:
 Function | Description | Availability
 ---------|-------------|-------------
 `eq` | Checks for equality. | Any type
-`gt`, `gte`, `lt`, `lte` | Check whether this column's value is greater than, etc than some other value. | Any type which implement [`PartialOrd`](https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html). Note: It's not guaranteed that Postgres supports these operator for a type just because it's `PartialOrd`. Be sure to check the documentation beforehand.
+`gt`, `gte`, `lt`, `lte` | Check whether this column's value is greater than, etc than some other value. | Any type which implements [`PartialOrd`](https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html). Note: it's not guaranteed that Postgres supports these operator for a type just because it's `PartialOrd`. Be sure to check the Postgres documentation for your type beforehand.
 `null`, `not_null` | Checks whether a column is `NULL`. | Any `Option<T>`. All other types are not `NULL`able and thus guaranteed not to be `NULL`.
 `contains`, `contains_not`, `contains_all`, `conatains_none`, `contains_any` | Array operations. Check whether this column's array contains a value, a value _not_, or any/all/none values of another array. | Any `Vec<T>`.
 
@@ -131,37 +146,94 @@ Function | Description | Availability
 
 You can also chain/modify these filters with standard boolean logic:
 
+```rust
+Book::select()
+    .where_(!Book::id.eq(&1) & Book::id.gt(&3))
+    .await?;
+```
+
 Operator/Method | Description
 ----------------|------------
-`!`, `not` | Negate a filter using a locigal `NOT`
-`&`, `and` | Combine two filters using a logical `AND`.
-`\|`, `or` | Combine two filters using a logical `OR`.
+`!`, `.not()` | Negate a filter using a locigal `NOT`
+`&`, `.and()` | Combine two filters using a logical `AND`
+`\|\|`, `.or()` | Combine two filters using a logical `OR`
+
 
 ### Executing a query
 
-After having finished building your query, you can simply call `.await`.
-This will turn the builder into a [`Query`] object which is then executed asynchronously.
+After having finished building your query, you can simply call `.await`. 
+This will turn the builder into a `Query` object which is then executed asynchronously.
 
-A query will always return a `Result`.
+Executing a query will always result in a `Result`.
 
 ## Raw queries
 
-Though these features are nice, they are not sufficient for most applications. This is why you can easily execute custom queries and still take advantage of automatic parsing, etc:
+Though these features are nice, they are not sufficient for all applications. This is why you can easily execute custom queries and still take advantage of automatic parsing, etc:
 
-```ignore
-// NOTE: You have to pass the exact type that Postgres is
+```rust
+// NOTE: You have to pass the exact type that PostgreSQL is 
 // expecting. Doing otherwise will result in a runtime error.
 let king_books = Book::query(r#"
-        SELECT * FROM book
+        SELECT * FROM book 
         JOIN author ON author.id = book.author_id
-        WHERE POSITION(? in author.name) > 0
-    "#,
+        WHERE POSITION(? in author.name) > 0 
+    "#, 
     vec![&"King".to_string()]
 ).await?;
 assert_eq!(king_books.len(), 2);
 ```
+
+Alse see `.where_raw` on query builders by which you can pass a raw condition without needing to write the whole query yourself.
+
+## Transactions
+
+`pg-worm also supports transactions. You can easily execute any query inside a `Transaction` and only commit when you are satisfied. 
+
+`Transaction`s are automatically rolled-back when dropped, unless they have been committed beforehand.
+
+Here's an example:
+
+```rust
+use pg_worm::prelude::*;
+
+#[derive(Model)]
+struct Foo {
+    bar: i64
+}
+
+async fn foo() -> Result<(), Box<dyn std::error::Error>> {
+    // Easily create a new transaction
+    let transaction = Transaction::begin().await?;
+
+    // Execute any query inside the transaction
+    let all_foo = transaction.execute(
+        Foo::select()
+    ).await?;   
+
+    // Commit the transaction when done.
+    // If not committed, transaction are rolled back
+    // when dropped.
+    transaction.commit().await?;
+}
+```
+
+## Supported types
+The following is a list of all supported (Rust) types and which PostgreSQL type they are mapped to.
+Rust type | PostgreSQL type
+----------|---------------------
+`bool` | `bool`
+`i32` | `int4`
+`i64` | `int8`
+`f32` | `float4`
+`f64` | `float8`
+`String` | `TEXT`
+`Option<T>`* | `T` (but the column becomes `nullable`)
+`Vec<T>`* | `T[]`
+
+_*`T` must be another supported type. Nesting and mixing `Option`/`Vec` is currently not supported._
+
 ## MSRV
-The minimum supported version of rust is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
+The minimum supported rust version is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
 
 ## License
 This project is dual-licensed under the MIT and Apache 2.0 licenses.
@@ -184,6 +256,8 @@ use query::{Delete, Update};
 
 use crate::query::Select;
 pub use async_trait::async_trait;
+/// This crate's reexport of the `futures` crate.
+pub use futures;
 pub use pg::{NoTls, Row};
 pub use pg_worm_derive::Model;
 /// This crate's reexport of the `tokio_postgres` crate.
@@ -195,7 +269,7 @@ use thiserror::Error;
 /// This module contains all necessary imports to get you started
 /// easily.
 pub mod prelude {
-    pub use crate::{force_register, register, FromRow, Model};
+    pub use crate::{force_create_table, try_create_table, FromRow, Model};
 
     pub use crate::config::Connection;
 
@@ -207,30 +281,31 @@ pub mod prelude {
 }
 
 /// An enum representing the errors which are emitted by this crate.
+#[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum Error {
     /// Something went wrong while connection to the database.
-    #[error("couldn't connect to database")]
+    #[error("not connected to database")]
     NotConnected,
     /// There already is a connection to the database.
     #[error("already connected to database")]
     AlreadyConnected,
     /// No connection has yet been established.
-    #[error("not connected to database")]
+    #[error("couldn't connect to database")]
     ConnectionError(#[from] deadpool_postgres::CreatePoolError),
     /// No connection object could be created.
     #[error("couldn't build connection/config")]
     ConnectionBuildError(#[from] deadpool_postgres::BuildError),
-    /// Emitted
+    /// Emitted when an invalid config string is passed to `Connection::to`.
     #[error("invalid config")]
     ConfigError(#[from] deadpool_postgres::ConfigError),
-    /// name
+    /// Emitted when no connection could be fetched from the pool.
     #[error("couldn't fetch connection from pool")]
     PoolError(#[from] deadpool_postgres::PoolError),
     /// Errors emitted by the Postgres server.
     ///
     /// Most likely an invalid query.
-    #[error("error communicating with database")]
+    #[error("postgres returned an error")]
     PostgresError(#[from] tokio_postgres::Error),
 }
 
@@ -304,7 +379,7 @@ pub fn set_pool(pool: Pool) -> Result<(), Error> {
 
 /// Create a table for your model.
 ///
-/// Use the [`register!`] macro for a more convenient api.
+/// Use the [`try_create_table!`] macro for a more convenient api.
 ///
 /// # Usage
 /// ```ignore
@@ -317,10 +392,11 @@ pub fn set_pool(pool: Pool) -> Result<(), Error> {
 /// #[tokio::main]
 /// async fn main() -> Result<(), pg_worm::Error> {
 ///     // ---- snip connection setup ----
-///     pg_worm::register_model::<M>().await?;
+///     pg_worm::try_create_table::<M>().await?;
 /// }
 /// ```
-pub async fn register_model<M: Model<M>>() -> Result<(), Error>
+#[doc(hidden)]
+pub async fn try_create_table<M: Model<M>>() -> Result<(), Error>
 where
     Error: From<<M as TryFrom<Row>>::Error>,
 {
@@ -330,9 +406,10 @@ where
     Ok(())
 }
 
-/// Same as [`register_model`] but if a table with the same name
+/// Same as [`try_create_table`] but if a table with the same name
 /// already exists, it is dropped instead of returning an error.
-pub async fn force_register_model<M: Model<M>>() -> Result<(), Error>
+#[doc(hidden)]
+pub async fn force_create_table<M: Model<M>>() -> Result<(), Error>
 where
     Error: From<<M as TryFrom<Row>>::Error>,
 {
@@ -347,18 +424,15 @@ where
     Ok(())
 }
 
-/// Registers a [`Model`] with the database by creating a
-/// corresponding table.
+/// Creates a table for the specified [`Model`].
 ///
-/// This is just a more convenient version api
-/// for the [`register_model`] function.
-///
-/// This macro, too, requires the `tokio` crate.
+/// This is just a more convenient api
+/// for the [`try_create_table()`] function.
 ///
 /// Returns an error if:
 ///  - a table with the same name already exists,
 ///  - the client is not connected,
-///  - the creation of the table fails
+///  - the creation of the table fails.
 ///
 /// # Usage
 ///
@@ -370,28 +444,50 @@ where
 ///     id: i64
 /// }
 ///
+/// #[derive(Model)]
+/// struct Bar {
+///     baz: String
+/// }
+///
 /// #[tokio::main]
 /// async fn main() -> Result<(), pg_worm::Error> {
 ///     // ---- snip connection setup ----
-///     register!(Foo)?;
+///     try_create_table!(Foo, Bar)?;
 /// }
 /// ```
 #[macro_export]
-macro_rules! register {
+macro_rules! try_create_table {
     ($($x:ty),+) => {
-        tokio::try_join!(
-            $($crate::register_model::<$x>()),*
+        $crate::futures::future::try_join_all(
+            vec![
+                $(
+                    $crate::futures::future::FutureExt::boxed(
+                        $crate::try_create_table::<$x>()
+                    )
+                ),*
+            ]
         )
     };
 }
 
-/// Like [`register!`] but if a table with the same name already
+/// Like [`try_create_table!`] but if a table with the same name already
 /// exists, it is dropped instead of returning an error.
+///
+/// # Example
+/// ```ignore
+/// force_create_table(MyModel, AnotherModel).await?;
+/// ```
 #[macro_export]
-macro_rules! force_register {
+macro_rules! force_create_table {
     ($($x:ty),+) => {
-        tokio::try_join!(
-            $($crate::force_register_model::<$x>()),*
+        $crate::futures::future::try_join_all(
+            vec![
+                $(
+                    $crate::futures::future::FutureExt::boxed(
+                        $crate::force_create_table::<$x>()
+                    )
+                ),*
+            ]
         )
     };
 }

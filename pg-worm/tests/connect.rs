@@ -22,7 +22,9 @@ struct Author {
 #[tokio::test]
 async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done once.
-    Connection::to("postgres://postgres:postgres@localhost:5432").await?;
+    Connection::build("postgres://postgres:postgres@localhost:5432")
+        .max_pool_size(16)
+        .connect()?;
 
     // Then, create the tables for your models.
     // Use `register!` if you want to fail if a
@@ -32,7 +34,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // which is useful for development.
     //
     // If your tables already exist, skip this part.
-    force_register!(Author, Book)?;
+    force_create_table!(Author, Book).await?;
 
     // Next, insert some data.
     // This works by passing values for all

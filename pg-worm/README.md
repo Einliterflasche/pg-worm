@@ -1,26 +1,26 @@
-![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg)
-
 # `pg-worm`
+[![Latest Version](https://img.shields.io/crates/v/pg-worm.svg)](https://crates.io/crates/pg-worm)
+![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg) 
+[![docs](https://docs.rs/pg-worm/badge.svg)](https://docs.rs/pg-worm)
+[![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ### *P*ost*g*reSQL's *W*orst *ORM*
 `pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
 Well, at least that's the goal. 
 
-## Motivation
+## Why though?
 
-Existing ORMs are not `async`, require you to write migrations or use a cli. 
-`pg_worm`'s explicit goal is to be easy and to require no setup beyond defining your types. 
+- Existing ORMs are not **`async`**, require you to write migrations or use a cli. 
+`pg-worm's explicit goal is to be **easy** and to require **no setup** beyond defining your types. 
 
-`pg_worm` also has no DSL which you need to learn.
-Everything you can do maps intuitively and directly to SQL expressions.
+- `pg-worm also features **built-in pooling** and a **concise syntax**.
 
-And, last but not least, `pg_worm` **does not get in your way**. Instead of relying on weird DSL tricks to achieve complex queries, you can simply write your own SQL and still profit off automatic parsing, etc.
-
-But that's enough ranting, go ahead and try it!
+- `pg-worm **doesn't get in your way** - easily include raw queries while still profiting off the other features.
 
 ## Usage
 This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) and is intended to be used with [`tokio`](https://tokio.rs/).
 
-Fortunately, using `pg_worm` is very easy.
+Fortunately, using `pg-worm is very easy.
 
 Simply derive the `Model` trait for your type, connect to your database 
 and you are ready to go!
@@ -28,6 +28,7 @@ and you are ready to go!
 Here's a quick example: 
 
 ```rust
+// Import the prelude to get started quickly
 use pg_worm::prelude::*;
 
 #[derive(Model)]
@@ -53,14 +54,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Connection::to("postgres://postgres:postgres@localhost:5432").await?;
 
     // Then, create tables for your models. 
-    // Use `register!` if you want to fail if a
+    // Use `try_create_table!` if you want to fail if a
     // table with the same name already exists.
     //
-    // `force_register` drops the old table,
+    // `force_create_table` drops the old table,
     // which is useful for development.
     //
     // If your tables already exist, skip this part.
-    force_register!(Author, Book)?;
+    force_create_table!(Author, Book).await?;
 
     // Next, insert some data.
     // This works by passing values for all
@@ -104,22 +105,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 If you want to see more code examples, have a look at the [tests directory](https://github.com/Einliterflasche/pg-worm/tree/main/pg-worm/tests).
 
 ## Query Builders
-As you can see in the above example, `pg_worm` allows you to build queries by chaining methods on so called 'builders'. 
-For each query type `pg_worm` provides a respective builder (except for `INSERT` which is handled differently).
+As you can see above, `pg-worm allows you to build queries by chaining methods on so called 'builders'. 
+For each query type `pg-worm provides a respective builder (except for `INSERT` which is handled differently).
 
 These builders expose a set of methods for building queries. Here's a list of them:
 
 Method | Description | Availability
 -------|-------------|-------------
 `where_` | Attach a `WHERE` clause to the query. | All builders (`Select`, `Update`, `Delete`)
+`where_raw` | Same as `where_` but you can pass raw SQL. | All builders (`Select`, `Update`, `Delete`) 
 `set` | `SET` a column's value. Note: this method has to be called at least once before you can execute the query. | `Update`
 `limit`, `offset` | Attach a [`LIMIT` or `OFFSET`](https://www.postgresql.org/docs/current/queries-limit.html) to the query. | `Select`
 
 ## Filtering using `WHERE`
-`where_()` can be used to easily include `WHERE` clauses in your queries. 
+`.where_()` can be used to easily include `WHERE` clauses in your queries. 
 
 This is done by passing a `Where` object which can be constructed by calling methods on the respective column. 
-`pg_worm` automatically constructs a constant for each field 
+`pg-worm automatically constructs a constant for each field 
 of your `Model`.
 
 A practical example would look like this:
@@ -127,6 +129,7 @@ A practical example would look like this:
 ```rust
 let where_: Where<'_> = MyModel::my_field.eq(&5);
 ```
+
 ### Available methods
 
 Currently, the following methods are implemented:
@@ -134,7 +137,7 @@ Currently, the following methods are implemented:
 Function | Description | Availability
 ---------|-------------|-------------
 `eq` | Checks for equality. | Any type
-`gt`, `gte`, `lt`, `lte` | Check whether this column's value is greater than, etc than some other value. | Any type which implement [`PartialOrd`](https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html). Note: It's not guaranteed that Postgres supports these operator for a type just because it's `PartialOrd`. Be sure to check the documentation beforehand.
+`gt`, `gte`, `lt`, `lte` | Check whether this column's value is greater than, etc than some other value. | Any type which implements [`PartialOrd`](https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html). Note: it's not guaranteed that Postgres supports these operator for a type just because it's `PartialOrd`. Be sure to check the Postgres documentation for your type beforehand.
 `null`, `not_null` | Checks whether a column is `NULL`. | Any `Option<T>`. All other types are not `NULL`able and thus guaranteed not to be `NULL`.
 `contains`, `contains_not`, `contains_all`, `conatains_none`, `contains_any` | Array operations. Check whether this column's array contains a value, a value _not_, or any/all/none values of another array. | Any `Vec<T>`.
 
@@ -142,11 +145,18 @@ Function | Description | Availability
 
 You can also chain/modify these filters with standard boolean logic:
 
+```rust
+Book::select()
+    .where_(!Book::id.eq(&1) & Book::id.gt(&3))
+    .await?;
+```
+
 Operator/Method | Description
 ----------------|------------
-`!`, `not` | Negate a filter using a locigal `NOT`
-`&`, `and` | Combine two filters using a logical `AND`.
-`\|`, `or` | Combine two filters using a logical `OR`
+`!`, `.not()` | Negate a filter using a locigal `NOT`
+`&`, `.and()` | Combine two filters using a logical `AND`
+`\|\|`, `.or()` | Combine two filters using a logical `OR`
+
 
 ### Executing a query
 
@@ -157,10 +167,10 @@ Executing a query will always result in a `Result`.
 
 ## Raw queries
 
-Though these features are nice, they are not sufficient for most applications. This is why you can easily execute custom queries and still take advantage of automatic parsing, etc:
+Though these features are nice, they are not sufficient for all applications. This is why you can easily execute custom queries and still take advantage of automatic parsing, etc:
 
 ```rust
-// NOTE: You have to pass the exact type that Postgres is 
+// NOTE: You have to pass the exact type that PostgreSQL is 
 // expecting. Doing otherwise will result in a runtime error.
 let king_books = Book::query(r#"
         SELECT * FROM book 
@@ -172,8 +182,57 @@ let king_books = Book::query(r#"
 assert_eq!(king_books.len(), 2);
 ```
 
+Alse see `.where_raw` on query builders by which you can pass a raw condition without needing to write the whole query yourself.
+
+## Transactions
+
+`pg-worm also supports transactions. You can easily execute any query inside a `Transaction` and only commit when you are satisfied. 
+
+`Transaction`s are automatically rolled-back when dropped, unless they have been committed beforehand.
+
+Here's an example:
+
+```rust
+use pg_worm::prelude::*;
+
+#[derive(Model)]
+struct Foo {
+    bar: i64
+}
+
+async fn foo() -> Result<(), Box<dyn std::error::Error>> {
+    // Easily create a new transaction
+    let transaction = Transaction::begin().await?;
+
+    // Execute any query inside the transaction
+    let all_foo = transaction.execute(
+        Foo::select()
+    ).await?;   
+
+    // Commit the transaction when done.
+    // If not committed, transaction are rolled back
+    // when dropped.
+    transaction.commit().await?;
+}
+```
+
+## Supported types
+The following is a list of all supported (Rust) types and which PostgreSQL type they are mapped to.
+Rust type | PostgreSQL type
+----------|---------------------
+`bool` | `bool`
+`i32` | `int4`
+`i64` | `int8`
+`f32` | `float4`
+`f64` | `float8`
+`String` | `TEXT`
+`Option<T>`* | `T` (but the column becomes `nullable`)
+`Vec<T>`* | `T[]`
+
+_*`T` must be another supported type. Nesting and mixing `Option`/`Vec` is currently not supported._
+
 ## MSRV
-The minimum supported version of rust is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
+The minimum supported rust version is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
 
 ## License
 This project is dual-licensed under the MIT and Apache 2.0 licenses.

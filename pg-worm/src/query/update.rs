@@ -14,9 +14,11 @@ use super::{push_all_with_sep, Executable, PushChunk, Query, SqlChunk, ToQuery, 
 /// has been set.
 ///
 /// `UPDATE` queries in this state cannot be executed.
+#[doc(hidden)]
 pub struct NoneSet;
 /// State representing that an UDPATE
 /// has been set.
+#[doc(hidden)]
 pub struct SomeSet;
 
 /// A struct for building `UPDATE` queries.
@@ -51,6 +53,33 @@ impl<'a, T> Update<'a, T> {
         self.where_ = self.where_.and(where_);
 
         self
+    }
+
+    /// Add a raw `WHERE` clause to your query.
+    ///
+    /// You can reference the `params` by using the `?` placeholder in your statement.
+    ///
+    /// Note: you need to pass the exact types Postgres is expecting.
+    /// Failure to do so will result in (sometimes confusing) runtime errors.
+    ///
+    /// Otherwise this behaves exactly like `where_`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Book::select()
+    ///     .where_(Book::id.neq(&3))
+    ///     .where_raw("complex_function(book.title, ?, ?)", vec![&true, &"Foobar"])
+    ///     .await?;
+    /// ```
+    pub fn where_raw(
+        self,
+        statement: impl Into<String>,
+        params: Vec<&'a (dyn ToSql + Sync)>,
+    ) -> Update<'a, T> {
+        let where_ = Where::new(statement.into(), params);
+
+        self.where_(where_)
     }
 
     /// Add a `SET` instruction to your `UPDATE` query.
