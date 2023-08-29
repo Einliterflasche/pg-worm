@@ -1,6 +1,6 @@
 [package]
 name = "pg-worm"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = ["Einliterflasche <einliterflasche@pm.me>"]
 license = "MIT OR Apache-2.0"

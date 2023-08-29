@@ -1,26 +1,26 @@
-# `pg-worm`
+# `pg-worm``
 [![Latest Version](https://img.shields.io/crates/v/pg-worm.svg)](https://crates.io/crates/pg-worm)
 ![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg) 
 [![docs](https://docs.rs/pg-worm/badge.svg)](https://docs.rs/pg-worm)
 [![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ### *P*ost*g*reSQL's *W*orst *ORM*
-`pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
+`pg-worm`` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
 Well, at least that's the goal. 
 
-## Why though?
+## Features/Why `pg-worm`?
 
 - Existing ORMs are not **`async`**, require you to write migrations or use a cli. 
-`pg-worm's explicit goal is to be **easy** and to require **no setup** beyond defining your types. 
+`pg-worm`'s explicit goal is to be **easy** and to require **no setup** beyond defining your types. 
 
-- `pg-worm also features **built-in pooling** and a **concise syntax**.
+- `pg-worm` also features **built-in pooling** and a **concise syntax**.
 
-- `pg-worm **doesn't get in your way** - easily include raw queries while still profiting off the other features.
+- `pg-worm` **doesn't get in your way** - easily include raw queries while still profiting off the other features.
 
 ## Usage
 This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) and is intended to be used with [`tokio`](https://tokio.rs/).
 
-Fortunately, using `pg-worm is very easy.
+Fortunately, using `pg-worm` is very easy.
 
 Simply derive the `Model` trait for your type, connect to your database 
 and you are ready to go!
@@ -44,14 +44,13 @@ struct Book {
 struct Author {
     #[column(primary_key, auto)]
     id: i64,
-    name: String,
-    age: i64
+    name: String
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First create a connection. This can be only done once.
-    Connection::to("postgres://postgres:postgres@localhost:5432").await?;
+    Connection::build("postgres://postgres:postgres@localhost:5432").connect()?;
 
     // Then, create tables for your models. 
     // Use `try_create_table!` if you want to fail if a
@@ -105,8 +104,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 If you want to see more code examples, have a look at the [tests directory](https://github.com/Einliterflasche/pg-worm/tree/main/pg-worm/tests).
 
 ## Query Builders
-As you can see above, `pg-worm allows you to build queries by chaining methods on so called 'builders'. 
-For each query type `pg-worm provides a respective builder (except for `INSERT` which is handled differently).
+As you can see above, `pg-worm` allows you to build queries by chaining methods on so called 'builders'. 
+For each query type `pg-worm` provides a respective builder (except for `INSERT` which is handled differently).
 
 These builders expose a set of methods for building queries. Here's a list of them:
 
@@ -121,7 +120,7 @@ Method | Description | Availability
 `.where_()` can be used to easily include `WHERE` clauses in your queries. 
 
 This is done by passing a `Where` object which can be constructed by calling methods on the respective column. 
-`pg-worm automatically constructs a constant for each field 
+`pg-worm` automatically constructs a constant for each field 
 of your `Model`.
 
 A practical example would look like this:
@@ -186,7 +185,7 @@ Alse see `.where_raw` on query builders by which you can pass a raw condition wi
 
 ## Transactions
 
-`pg-worm also supports transactions. You can easily execute any query inside a `Transaction` and only commit when you are satisfied. 
+`pg-worm` also supports transactions. You can easily execute any query inside a `Transaction` and only commit when you are satisfied. 
 
 `Transaction`s are automatically rolled-back when dropped, unless they have been committed beforehand.
 
