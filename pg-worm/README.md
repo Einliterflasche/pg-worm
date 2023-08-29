@@ -1,11 +1,11 @@
-# `pg-worm``
+# `pg-worm`
 [![Latest Version](https://img.shields.io/crates/v/pg-worm.svg)](https://crates.io/crates/pg-worm)
 ![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg) 
 [![docs](https://docs.rs/pg-worm/badge.svg)](https://docs.rs/pg-worm)
 [![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ### *P*ost*g*reSQL's *W*orst *ORM*
-`pg-worm`` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
+`pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
 Well, at least that's the goal. 
 
 ## Features/Why `pg-worm`?
