@@ -36,7 +36,7 @@ struct Book {
     // An auto-generated primary key
     #[column(primary_key, auto)]
     id: i64,
-    title: String
+    title: String,
     author_id: i64
 }
 
