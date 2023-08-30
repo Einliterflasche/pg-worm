@@ -135,7 +135,7 @@ Currently, the following methods are implemented:
 
 Function | Description | Availability
 ---------|-------------|-------------
-`eq` | Checks for equality. | Any type
+`eq`     | Checks for equality. | Any type
 `gt`, `gte`, `lt`, `lte` | Check whether this column's value is greater than, etc than some other value. | Any type which implements [`PartialOrd`](https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html). Note: it's not guaranteed that Postgres supports these operator for a type just because it's `PartialOrd`. Be sure to check the Postgres documentation for your type beforehand.
 `null`, `not_null` | Checks whether a column is `NULL`. | Any `Option<T>`. All other types are not `NULL`able and thus guaranteed not to be `NULL`.
 `contains`, `contains_not`, `contains_all`, `conatains_none`, `contains_any` | Array operations. Check whether this column's array contains a value, a value _not_, or any/all/none values of another array. | Any `Vec<T>`.
@@ -152,8 +152,8 @@ Book::select()
 
 Operator/Method | Description
 ----------------|------------
-`!`, `.not()` | Negate a filter using a locigal `NOT`
-`&`, `.and()` | Combine two filters using a logical `AND`
+`!`, `.not()`   | Negate a filter using a locigal `NOT`
+`&`, `.and()`   | Combine two filters using a logical `AND`
 `\|\|`, `.or()` | Combine two filters using a logical `OR`
 
 
@@ -216,23 +216,96 @@ async fn foo() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 ## Supported types
-The following is a list of all supported (Rust) types and which PostgreSQL type they are mapped to.
-Rust type | PostgreSQL type
-----------|---------------------
-`bool` | `bool`
-`i32` | `int4`
-`i64` | `int8`
-`f32` | `float4`
-`f64` | `float8`
-`String` | `TEXT`
-`Option<T>`* | `T` (but the column becomes `nullable`)
-`Vec<T>`* | `T[]`
+The following is a list of supported (Rust) types and which PostgreSQL type they are mapped to.
+
+Rust type    | PostgreSQL type
+-------------|---------------------
+`bool`       | `BOOL`
+`i16`        | `INT2`
+`i32`        | `INT4`
+`i64`        | `INT8`
+`f32`        | `FLOAT4`
+`f64`        | `FLOAT8`
+`String`     | `TEXT`
+`Option<T>`* | `T` (but the column becomes `NULLABLE`)
+`Vec<T>`*    | `T[]`
 
 _*`T` must be another supported type. Nesting and mixing `Option`/`Vec` is currently not supported._
+
+### JSON, timestamps and more
+are supported, too. To use them activate the respective feature, like so:
+
+```toml
+# Cargo.toml
+[dependencies]
+pg-worm = { version = "latest-version", features = ["foo"] }
+```
+
+Here is a list of the supported features/types with their respective PostgreSQL type: 
+
+ * `"serde-json"` for [`serde_json`](https://crates.io/crates/serde_json) `v1.0`
+   Rust type | PostgreSQL type
+   ----------|----------------
+   `Value`   | `JSONB`
+ * `"time"` for [`time`](https://crates.io/crates/time/0.3.0) `v3.0` 
+   Rust type           | PostgreSQL type
+   --------------------|----------------
+   `Date`              | `DATE`
+   `Time`              | `TIME`
+   `PrimitiveDateTime` | `TIMESTAMP`
+   `OffsetDateTime`    | `TIMESTAMP WITH TIME ZONE`
+
+ * `"uuid"` for [`uuid`](https://crates.io/crates/uuid) `v1.0`
+   Rust type | PostgreSQL type
+   ----------|----------------
+   `Uuid`    | `UUID`
+
+## `derive` options
+
+You can configure some options for you `Model`. 
+This is done by using one of the two attributes `pg-worm` exposes.
+
+### The `#[table]` attribute
+
+The `#[table]` attribute can be used to pass configurations to a `Model` which affect the respective table itself.
+
+```rust
+use pg_worm::prelude::*;
+
+#[derive(Model)]
+#[table(table_name = "book_list")]
+struct Book {
+    id: i64
+}
+```
+
+Option | Meaning | Usage | Default
+-------|---------|-------|--------
+`table_name` | Set the table's name | `table_name = "new_table_name"` | The `struct`'s name converted to snake case using [this crate](https://crates.io/crates/convert_case).
+
+### The `#[column]` attribute
+
+The `#[column]` attribute can be used to pass configurations to a `Model`'s field which affect the respective column.
+
+```rust
+use pg_worm::prelude::*;
+
+#[derive(Model)]
+struct Book {
+    #[column(primary_key, auto)]
+    id: i64
+}
+```
+
+Option | Meaning | Usage | Default
+-------|---------|-------|--------
+`column_name` | Set this column's name. | `#[column(column_name = "new_column_name")]` | The fields's name converted to snake case using [this crate](https://crates.io/crates/convert_case).
+`primary_key` | Make this column the primary key. Only use this once per `Model`. If you want this column to be auto generated use `auto` as well. | `#[column(primary_key)]` | `false`
+`auto` | Make this column auto generated. Works only for `i16`, `i32` and `i64`, as well as `Uuid` *if* the `"uuid"` feature has been enabled *and* you use PostgreSQL version 13 or later. | `#[column(auto)]` | `false`
+
 
 ## MSRV
 The minimum supported rust version is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
 
 ## License
 This project is dual-licensed under the MIT and Apache 2.0 licenses.
-

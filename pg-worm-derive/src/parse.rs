@@ -1,3 +1,4 @@
+use convert_case::Casing;
 use darling::{ast::Data, Error, FromDeriveInput, FromField};
 use postgres_types::Type;
 use proc_macro2::TokenStream;
@@ -21,13 +22,15 @@ pub struct ModelField {
     column_name: Option<String>,
     #[darling(default)]
     auto: bool,
+    #[darling(skip)]
+    auto_gen_stmt: String,
     #[darling(default)]
     primary_key: bool,
     #[darling(default)]
     unique: bool,
     #[darling(skip)]
     nullable: bool,
-    #[darling(default)]
+    #[darling(skip)]
     array: bool,
 }
 
@@ -43,7 +46,7 @@ impl ModelInput {
             return table_name.clone();
         }
 
-        self.ident.to_string().to_lowercase()
+        self.ident.to_string().to_case(convert_case::Case::Snake)
     }
 
     /// Get an iterator over the input struct's fields.
@@ -192,10 +195,10 @@ impl ModelInput {
         let column_names = self.all_fields().map(|i| i.column_name());
 
         quote!(
-            impl TryFrom<pg_worm::Row> for #ident {
+            impl TryFrom<pg_worm::pg::Row> for #ident {
                 type Error = pg_worm::Error;
 
-                fn try_from(row: pg_worm::Row) -> Result<#ident, Self::Error> {
+                fn try_from(row: pg_worm::pg::Row) -> Result<#ident, Self::Error> {
                     let res = #ident {
                         #(
                             #field_idents: row.try_get(#column_names)?
@@ -218,7 +221,7 @@ impl ModelInput {
         let n_fields = self.all_fields().count();
 
         quote!(
-            pub const COLUMNS: [&'static dyn Deref<Target = Column>; #n_fields] = [
+            pub const COLUMNS: [&'static dyn Deref<Target = pg_worm::query::Column>; #n_fields] = [
                 #(
                     &#ident::#field_idents
                 ),*
@@ -330,19 +333,32 @@ impl ModelField {
 
         // Extract relevant type from the path
         let syn::Type::Path(path) = ty else {
-            spanned_error!("unsupported type", &ty)
+            spanned_error!("pg-worm: unsupported type", &ty)
         };
         let path = &path.path;
         let Some(last_seg) = path.segments.last() else {
-            spanned_error!("invalid path (needs at least one segment)", &ty)
+            spanned_error!("pg-worm: invalid type path (needs at least one segment)", &ty)
         };
 
         match last_seg.ident.to_string().as_str() {
             // If it's an Option<T>, set the field nullable
-            "Option" => field.nullable = true,
+            "Option" => {
+                field.nullable = true;
+            }
             // If it's a Vec<T>, set the field to be an array
-            "Vec" => field.array = true,
+            "Vec" => {
+                field.array = true;
+            }
             _ => (),
+        };
+
+        if field.auto {
+            field.auto_gen_stmt = match last_seg.ident.to_string().as_str() {
+                #[cfg(feature = "uuid")]
+                "Uuid" => "DEFAULT gen_random_uuid()",
+                "i16" | "i32" | "i64" => "GENERATED ALWAYS AS IDENTITY",
+                _ => spanned_error!("pg-worm: `auto` is only available for integers and uuid (with the `uuid` feature enabled)", &ty)
+            }.to_string();
         }
 
         Ok(field)
@@ -404,12 +420,31 @@ impl ModelField {
 
         Ok(match id.to_string().as_ref() {
             "String" => Type::TEXT,
+            "i16" => Type::INT2,
             "i32" => Type::INT4,
             "i64" => Type::INT8,
             "f32" => Type::FLOAT4,
             "f64" => Type::FLOAT8,
             "bool" => Type::BOOL,
-            _ => spanned_error!("pg-worm: unsupported type, check docs", &ty),
+            // `serde_json` support
+            #[cfg(feature = "serde-json")]
+            "Value" => Type::JSONB,
+            // `time` support
+            #[cfg(feature = "time")]
+            "Date" => Type::DATE,
+            #[cfg(feature = "time")]
+            "Time" => Type::TIME,
+            #[cfg(feature = "time")]
+            "PrimitiveDateTime" => Type::TIMESTAMP,
+            #[cfg(feature = "time")]
+            "OffsetDateTime" => Type::TIMESTAMPTZ,
+            // `uuid` support
+            #[cfg(feature = "uuid")]
+            "Uuid" => Type::UUID,
+            _ => spanned_error!(
+                "pg-worm: unsupported type. did you forget to enable a feature?",
+                &ty
+            ),
         })
     }
 
@@ -423,7 +458,7 @@ impl ModelField {
         // This macro allows adding an arg to the list
         // under a given condition.
         macro_rules! arg {
-            ($cond:expr, $sql:literal) => {
+            ($cond:expr, $sql:expr) => {
                 if $cond {
                     args.push($sql.to_string());
                 }
@@ -431,9 +466,9 @@ impl ModelField {
         }
 
         // Add possible args
-        arg!(self.array, "ARRAY");
+        arg!(self.array, "[]");
         arg!(self.primary_key, "PRIMARY KEY");
-        arg!(self.auto, "GENERATED ALWAYS AS IDENTITY");
+        arg!(self.auto, self.auto_gen_stmt);
         arg!(self.unique, "UNIQUE");
         arg!(!(self.primary_key || self.nullable), "NOT NULL");
 
@@ -477,7 +512,7 @@ impl ModelField {
 
         quote!(
             #[allow(non_upper_case_globals)]
-            pub const #ident: pg_worm::TypedColumn<#rs_type> = pg_worm::TypedColumn::new(#table_name, #col_name)
+            pub const #ident: pg_worm::query::TypedColumn<#rs_type> = pg_worm::query::TypedColumn::new(#table_name, #col_name)
                 #(#props)*;
         )
     }

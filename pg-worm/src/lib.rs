@@ -1,18 +1,18 @@
 /*!
 # `pg-worm`
 [![Latest Version](https://img.shields.io/crates/v/pg-worm.svg)](https://crates.io/crates/pg-worm)
-![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg) 
+![GitHub Actions Testing](https://github.com/Einliterflasche/pg-worm/actions/workflows/rust.yml/badge.svg)
 [![docs](https://docs.rs/pg-worm/badge.svg)](https://docs.rs/pg-worm)
 [![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ### *P*ost*g*reSQL's *W*orst *ORM*
 `pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
-Well, at least that's the goal. 
+Well, at least that's the goal.
 
 ## Features/Why `pg-worm`?
 
-- Existing ORMs are not **`async`**, require you to write migrations or use a cli. 
-`pg-worm`'s explicit goal is to be **easy** and to require **no setup** beyond defining your types. 
+- Existing ORMs are not **`async`**, require you to write migrations or use a cli.
+`pg-worm`'s explicit goal is to be **easy** and to require **no setup** beyond defining your types.
 
 - `pg-worm` also features **built-in pooling** and a **concise syntax**.
 
@@ -23,10 +23,10 @@ This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8
 
 Fortunately, using `pg-worm` is very easy.
 
-Simply derive the `Model` trait for your type, connect to your database 
+Simply derive the `Model` trait for your type, connect to your database
 and you are ready to go!
 
-Here's a quick example: 
+Here's a quick example:
 
 ```rust
 // Import the prelude to get started quickly
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First create a connection. This can be only done once.
     Connection::build("postgres://postgres:postgres@localhost:5432").connect()?;
 
-    // Then, create tables for your models. 
+    // Then, create tables for your models.
     // Use `try_create_table!` if you want to fail if a
     // table with the same name already exists.
     //
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 If you want to see more code examples, have a look at the [tests directory](https://github.com/Einliterflasche/pg-worm/tree/main/pg-worm/tests).
 
 ## Query Builders
-As you can see above, `pg-worm` allows you to build queries by chaining methods on so called 'builders'. 
+As you can see above, `pg-worm` allows you to build queries by chaining methods on so called 'builders'.
 For each query type `pg-worm` provides a respective builder (except for `INSERT` which is handled differently).
 
 These builders expose a set of methods for building queries. Here's a list of them:
@@ -113,15 +113,15 @@ These builders expose a set of methods for building queries. Here's a list of th
 Method | Description | Availability
 -------|-------------|-------------
 `where_` | Attach a `WHERE` clause to the query. | All builders (`Select`, `Update`, `Delete`)
-`where_raw` | Same as `where_` but you can pass raw SQL. | All builders (`Select`, `Update`, `Delete`) 
+`where_raw` | Same as `where_` but you can pass raw SQL. | All builders (`Select`, `Update`, `Delete`)
 `set` | `SET` a column's value. Note: this method has to be called at least once before you can execute the query. | `Update`
 `limit`, `offset` | Attach a [`LIMIT` or `OFFSET`](https://www.postgresql.org/docs/current/queries-limit.html) to the query. | `Select`
 
 ## Filtering using `WHERE`
-`.where_()` can be used to easily include `WHERE` clauses in your queries. 
+`.where_()` can be used to easily include `WHERE` clauses in your queries.
 
-This is done by passing a `Where` object which can be constructed by calling methods on the respective column. 
-`pg-worm` automatically constructs a constant for each field 
+This is done by passing a `Where` object which can be constructed by calling methods on the respective column.
+`pg-worm` automatically constructs a constant for each field
 of your `Model`.
 
 A practical example would look like this:
@@ -136,7 +136,7 @@ Currently, the following methods are implemented:
 
 Function | Description | Availability
 ---------|-------------|-------------
-`eq` | Checks for equality. | Any type
+`eq`     | Checks for equality. | Any type
 `gt`, `gte`, `lt`, `lte` | Check whether this column's value is greater than, etc than some other value. | Any type which implements [`PartialOrd`](https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html). Note: it's not guaranteed that Postgres supports these operator for a type just because it's `PartialOrd`. Be sure to check the Postgres documentation for your type beforehand.
 `null`, `not_null` | Checks whether a column is `NULL`. | Any `Option<T>`. All other types are not `NULL`able and thus guaranteed not to be `NULL`.
 `contains`, `contains_not`, `contains_all`, `conatains_none`, `contains_any` | Array operations. Check whether this column's array contains a value, a value _not_, or any/all/none values of another array. | Any `Vec<T>`.
@@ -153,14 +153,14 @@ Book::select()
 
 Operator/Method | Description
 ----------------|------------
-`!`, `.not()` | Negate a filter using a locigal `NOT`
-`&`, `.and()` | Combine two filters using a logical `AND`
+`!`, `.not()`   | Negate a filter using a locigal `NOT`
+`&`, `.and()`   | Combine two filters using a logical `AND`
 `\|\|`, `.or()` | Combine two filters using a logical `OR`
 
 
 ### Executing a query
 
-After having finished building your query, you can simply call `.await`. 
+After having finished building your query, you can simply call `.await`.
 This will turn the builder into a `Query` object which is then executed asynchronously.
 
 Executing a query will always result in a `Result`.
@@ -170,13 +170,13 @@ Executing a query will always result in a `Result`.
 Though these features are nice, they are not sufficient for all applications. This is why you can easily execute custom queries and still take advantage of automatic parsing, etc:
 
 ```ignore
-// NOTE: You have to pass the exact type that PostgreSQL is 
+// NOTE: You have to pass the exact type that PostgreSQL is
 // expecting. Doing otherwise will result in a runtime error.
 let king_books = Book::query(r#"
-        SELECT * FROM book 
+        SELECT * FROM book
         JOIN author ON author.id = book.author_id
-        WHERE POSITION(? in author.name) > 0 
-    "#, 
+        WHERE POSITION(? in author.name) > 0
+    "#,
     vec![&"King".to_string()]
 ).await?;
 assert_eq!(king_books.len(), 2);
@@ -186,7 +186,7 @@ Alse see `.where_raw` on query builders by which you can pass a raw condition wi
 
 ## Transactions
 
-`pg-worm` also supports transactions. You can easily execute any query inside a `Transaction` and only commit when you are satisfied. 
+`pg-worm` also supports transactions. You can easily execute any query inside a `Transaction` and only commit when you are satisfied.
 
 `Transaction`s are automatically rolled-back when dropped, unless they have been committed beforehand.
 
@@ -207,7 +207,7 @@ async fn foo() -> Result<(), Box<dyn std::error::Error>> {
     // Execute any query inside the transaction
     let all_foo = transaction.execute(
         Foo::select()
-    ).await?;   
+    ).await?;
 
     // Commit the transaction when done.
     // If not committed, transaction are rolled back
@@ -217,25 +217,100 @@ async fn foo() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 ## Supported types
-The following is a list of all supported (Rust) types and which PostgreSQL type they are mapped to.
-Rust type | PostgreSQL type
-----------|---------------------
-`bool` | `bool`
-`i32` | `int4`
-`i64` | `int8`
-`f32` | `float4`
-`f64` | `float8`
-`String` | `TEXT`
-`Option<T>`* | `T` (but the column becomes `nullable`)
-`Vec<T>`* | `T[]`
+The following is a list of supported (Rust) types and which PostgreSQL type they are mapped to.
+
+Rust type    | PostgreSQL type
+-------------|---------------------
+`bool`       | `BOOL`
+`i16`        | `INT2`
+`i32`        | `INT4`
+`i64`        | `INT8`
+`f32`        | `FLOAT4`
+`f64`        | `FLOAT8`
+`String`     | `TEXT`
+`Option<T>`* | `T` (but the column becomes `NULLABLE`)
+`Vec<T>`*    | `T[]`
 
 _*`T` must be another supported type. Nesting and mixing `Option`/`Vec` is currently not supported._
+
+### JSON, timestamps and more
+are supported, too. To use them activate the respective feature, like so:
+
+```ignore
+# Cargo.toml
+[dependencies]
+pg-worm = { version = "latest-version", features = ["foo"] }
+```
+
+Here is a list of the supported features/types with their respective PostgreSQL type:
+
+ * `"serde-json"` for [`serde_json`](https://crates.io/crates/serde_json) `v1.0`
+   Rust type | PostgreSQL type
+   ----------|----------------
+   `Value`   | `JSONB`
+ * `"time"` for [`time`](https://crates.io/crates/time/0.3.0) `v3.0`
+   Rust type           | PostgreSQL type
+   --------------------|----------------
+   `Date`              | `DATE`
+   `Time`              | `TIME`
+   `PrimitiveDateTime` | `TIMESTAMP`
+   `OffsetDateTime`    | `TIMESTAMP WITH TIME ZONE`
+
+ * `"uuid"` for [`uuid`](https://crates.io/crates/uuid) `v1.0`
+   Rust type | PostgreSQL type
+   ----------|----------------
+   `Uuid`    | `UUID`
+
+## `derive` options
+
+You can configure some options for you `Model`.
+This is done by using one of the two attributes `pg-worm` exposes.
+
+### The `#[table]` attribute
+
+The `#[table]` attribute can be used to pass configurations to a `Model` which affect the respective table itself.
+
+```rust
+use pg_worm::prelude::*;
+
+#[derive(Model)]
+#[table(table_name = "book_list")]
+struct Book {
+    id: i64
+}
+```
+
+Option | Meaning | Usage | Default
+-------|---------|-------|--------
+`table_name` | Set the table's name | `table_name = "new_table_name"` | The `struct`'s name converted to snake case using [this crate](https://crates.io/crates/convert_case).
+
+### The `#[column]` attribute
+
+The `#[column]` attribute can be used to pass configurations to a `Model`'s field which affect the respective column.
+
+```rust
+use pg_worm::prelude::*;
+
+#[derive(Model)]
+struct Book {
+    #[column(primary_key, auto)]
+    id: i64
+}
+```
+
+Option | Meaning | Usage | Default
+-------|---------|-------|--------
+`column_name` | Set this column's name. | `#[column(column_name = "new_column_name")]` | The fields's name converted to snake case using [this crate](https://crates.io/crates/convert_case).
+`primary_key` | Make this column the `PRIMARY KEY`. Only use this once per `Model`. If you want this column to be auto generated use `auto` as well. | `#[column(primary_key)]` | `false`
+`auto` | Make this column auto generated. Works only for `i16`, `i32` and `i64`, as well as `Uuid` *if* the `"uuid"` feature has been enabled *and* you use PostgreSQL version 13 or later. | `#[column(auto)]` | `false`
+`unique` | Make this column `UNIQUE`. | `#[column(unique)]` | `false`
 
 ## MSRV
 The minimum supported rust version is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
 
 ## License
 This project is dual-licensed under the MIT and Apache 2.0 licenses.
+
 */
 
 #![deny(missing_docs)]
@@ -249,21 +324,19 @@ pub mod query;
 use std::{ops::Deref, sync::OnceLock};
 
 use deadpool_postgres::{Client as DpClient, GenericClient, Pool, Transaction as DpTransaction};
-use prelude::Query;
-pub use query::{Column, TypedColumn};
-use query::{Delete, Update};
+use pg::types::ToSql;
+use pg::Row;
+use query::{Column, Delete, Query, Select, TypedColumn, Update};
+use thiserror::Error;
 
-use crate::query::Select;
+#[doc(hidden)]
 pub use async_trait::async_trait;
-/// This crate's reexport of the `futures` crate.
-pub use futures;
-pub use pg::{NoTls, Row};
-pub use pg_worm_derive::Model;
-/// This crate's reexport of the `tokio_postgres` crate.
+#[doc(hidden)]
+pub use futures_util;
+#[doc(hidden)]
 pub use tokio_postgres as pg;
 
-use pg::types::ToSql;
-use thiserror::Error;
+pub use pg_worm_derive::Model;
 
 /// This module contains all necessary imports to get you started
 /// easily.
@@ -479,10 +552,10 @@ macro_rules! try_create_table {
 #[macro_export]
 macro_rules! force_create_table {
     ($($x:ty),+) => {
-        $crate::futures::future::try_join_all(
+        $crate::futures_util::future::try_join_all(
             vec![
                 $(
-                    $crate::futures::future::FutureExt::boxed(
+                    $crate::futures_util::future::FutureExt::boxed(
                         $crate::force_create_table::<$x>()
                     )
                 ),*
