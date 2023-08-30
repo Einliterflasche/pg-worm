@@ -1,6 +1,6 @@
 [package]
 name = "pg-worm"
-version = "0.6.2"
+version = "0.7.0"
 edition = "2021"
 authors = ["Einliterflasche <einliterflasche@pm.me>"]
 license = "MIT OR Apache-2.0"
@@ -17,7 +17,7 @@ deadpool-postgres = "0.10"
 tokio-postgres = { version = "0.7", default-features = false } 
 async-trait = "0.1"
 futures-util = { version = "0.3", default-features = false }
-pg-worm-derive = { version = "0.6", path = "../pg-worm-derive" }
+pg-worm-derive = "0.7"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
