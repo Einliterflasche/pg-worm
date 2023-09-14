@@ -3,19 +3,19 @@ use std::{
     ptr::drop_in_place,
 };
 
-use deadpool_postgres::{Client as DpClient, Transaction as DpTransaction};
+use tokio_postgres::Transaction as PgTransaction;
 
-use crate::{fetch_client, Error};
+use crate::{fetch_client, pool::Client as PgClient, Error};
 
 use super::{Executable, Query, ToQuery};
 
-struct PinnedClient(pub *mut DpClient);
+struct PinnedClient(pub *mut PgClient);
 
 impl PinnedClient {
-    unsafe fn from_client(client: DpClient) -> PinnedClient {
+    unsafe fn from_client(client: PgClient) -> PinnedClient {
         // Allocate memory on the heap
-        let layout = Layout::new::<DpClient>();
-        let pointer = alloc(layout) as *mut DpClient;
+        let layout = Layout::new::<PgClient>();
+        let pointer = alloc(layout) as *mut PgClient;
 
         // Make sure it worked
         if pointer.is_null() {
@@ -41,7 +41,7 @@ impl Drop for PinnedClient {
 
             // Deallocate the previously allocated
             // memory when the PinnedClient is dropped.
-            dealloc(self.0 as *mut u8, Layout::new::<DpClient>());
+            dealloc(self.0 as *mut u8, Layout::new::<PgClient>());
         }
     }
 }
@@ -51,15 +51,15 @@ impl Drop for PinnedClient {
 /// Use it to execute queries as part of this transaction.
 /// When you are done, commit using `.commit()`
 pub struct Transaction<'a> {
-    transaction: DpTransaction<'a>,
+    transaction: PgTransaction<'a>,
     _client: PinnedClient,
 }
 
 impl<'a> Transaction<'a> {
-    async fn from_client<'this>(client: DpClient) -> Result<Transaction<'a>, Error> {
+    async fn from_client<'this>(client: PgClient) -> Result<Transaction<'a>, Error> {
         let client = unsafe { PinnedClient::from_client(client) };
         let transaction = unsafe {
-            // Convert `*mut DpClient` to `&mut DpClient`
+            // Convert `*mut PgClient` to `&mut PgClient`
             // This shouldn't fail since the pointer in PinnedCliend
             // is guaranteed not to be null.
             &mut *client.0

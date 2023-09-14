@@ -19,7 +19,7 @@ use std::{
 use async_trait::async_trait;
 use tokio_postgres::{types::ToSql, Row, Transaction as PgTransaction};
 
-use crate::{fetch_client, DpClient, DpTransaction, Error};
+use crate::{fetch_client, Client, Error};
 
 pub use delete::Delete;
 pub use select::Select;
@@ -51,7 +51,7 @@ pub trait Executable {
     type Output;
 
     /// The actual function for executing a query.
-    async fn exec(&self) -> Result<Self::Output, crate::Error> {
+    async fn exec<'a>(&self) -> Result<Self::Output, crate::Error> {
         let client = fetch_client().await?;
         self.exec_with(&client).await
     }
@@ -186,7 +186,7 @@ impl<'a> PushChunk<'a> for SqlChunk<'a> {
 }
 
 #[async_trait]
-impl<'a> Executor for &DpTransaction<'a> {
+impl<'a> Executor for &PgTransaction<'a> {
     async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
         PgTransaction::query(self, stmt, params)
             .await
@@ -201,7 +201,7 @@ impl<'a> Executor for &DpTransaction<'a> {
 }
 
 #[async_trait]
-impl Executor for &DpClient {
+impl Executor for &Client {
     async fn query(&self, stmt: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error> {
         (***self).query(stmt, params).await.map_err(Error::from)
     }

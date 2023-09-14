@@ -318,14 +318,14 @@ This project is dual-licensed under the MIT and Apache 2.0 licenses.
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
 
-pub mod config;
+pub mod pool;
 pub mod query;
 
-use std::{ops::Deref, sync::OnceLock};
+use std::ops::Deref;
 
-use deadpool_postgres::{Client as DpClient, GenericClient, Pool, Transaction as DpTransaction};
 use pg::types::ToSql;
 use pg::Row;
+use pool::Client;
 use query::{Column, Delete, Query, Select, TypedColumn, Update};
 use thiserror::Error;
 
@@ -336,6 +336,7 @@ pub use futures_util;
 #[doc(hidden)]
 pub use tokio_postgres as pg;
 
+pub use pool::{fetch_client, set_pool};
 pub use pg_worm_derive::Model;
 
 /// This module contains all necessary imports to get you started
@@ -343,7 +344,7 @@ pub use pg_worm_derive::Model;
 pub mod prelude {
     pub use crate::{force_create_table, try_create_table, FromRow, Model};
 
-    pub use crate::config::Connection;
+    pub use crate::pool::Connection;
 
     pub use crate::query::{
         Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, Transaction, TypedColumn,
@@ -364,16 +365,16 @@ pub enum Error {
     AlreadyConnected,
     /// No connection has yet been established.
     #[error("couldn't connect to database")]
-    ConnectionError(#[from] deadpool_postgres::CreatePoolError),
+    ConnectionError,
     /// No connection object could be created.
     #[error("couldn't build connection/config")]
-    ConnectionBuildError(#[from] deadpool_postgres::BuildError),
+    ConnectionBuildError,
     /// Emitted when an invalid config string is passed to `Connection::to`.
     #[error("invalid config")]
-    ConfigError(#[from] deadpool_postgres::ConfigError),
+    InvalidPoolConfig,
     /// Emitted when no connection could be fetched from the pool.
     #[error("couldn't fetch connection from pool")]
-    PoolError(#[from] deadpool_postgres::PoolError),
+    NoConnectionInPool,
     /// Errors emitted by the Postgres server.
     ///
     /// Most likely an invalid query.
@@ -431,23 +432,6 @@ pub trait Model<T>: FromRow {
     fn query(_: impl Into<String>, _: Vec<&(dyn ToSql + Sync)>) -> Query<'_, Vec<T>>;
 }
 
-static POOL: OnceLock<Pool> = OnceLock::new();
-
-/// Try to fetch a client from the connection pool.
-#[doc(hidden)]
-pub async fn fetch_client() -> Result<DpClient, Error> {
-    POOL.get()
-        .ok_or(Error::NotConnected)?
-        .get()
-        .await
-        .map_err(Error::from)
-}
-
-/// Hidden function so set the pool from the `config` module.
-#[doc(hidden)]
-pub fn set_pool(pool: Pool) -> Result<(), Error> {
-    POOL.set(pool).map_err(|_| Error::AlreadyConnected)
-}
 
 /// Create a table for your model.
 ///
