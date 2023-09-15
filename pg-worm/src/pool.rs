@@ -2,7 +2,7 @@
 use std::{
     ops::{Deref, DerefMut},
     str::FromStr,
-    sync::{OnceLock, Arc, Mutex}
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use deadpool::managed::{self, Object};
@@ -20,9 +20,8 @@ static POOL: OnceLock<Pool> = OnceLock::new();
 /// This is a single client which is used for prepared statements.
 static PREPARED_CLIENT: OnceLock<Client> = OnceLock::new();
 /// This hashmap keeps track of all prepared statements.
-static PREPARED_STATEMENTS: Lazy<Arc<Mutex<HashMap<String, Statement>>>> = Lazy::new(|| 
-    Arc::new(Mutex::new(HashMap::new()))
-);
+static PREPARED_STATEMENTS: Lazy<Arc<Mutex<HashMap<String, Statement>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// The pool which houses all connections to the PostgreSQL sever.
 type Pool = managed::Pool<Manager>;
@@ -69,18 +68,17 @@ pub async fn fetch_client() -> Result<Client, Error> {
         .map_err(|_| Error::NoConnectionInPool)
 }
 
-
 #[doc(hidden)]
 #[inline]
 pub async fn fetch_prepared_client() -> Result<&'static Client, Error> {
-    PREPARED_CLIENT.get()
-        .ok_or(Error::NotConnected)
+    PREPARED_CLIENT.get().ok_or(Error::NotConnected)
 }
 
 #[doc(hidden)]
 #[inline]
 pub async fn ensure_prepared(statement: &str) -> Result<(), Error> {
-    let is_prepared = PREPARED_STATEMENTS.lock()
+    let is_prepared = PREPARED_STATEMENTS
+        .lock()
         .map_err(|_| Error::NotConnected)?
         .contains_key(statement);
 
@@ -88,16 +86,15 @@ pub async fn ensure_prepared(statement: &str) -> Result<(), Error> {
         return Ok(());
     }
 
-    let prepared_stmt = fetch_prepared_client().await?
-        .prepare(statement)
-        .await?;
+    let prepared_stmt = fetch_prepared_client().await?.prepare(statement).await?;
     let owned_stmt = statement.to_string();
 
-    PREPARED_STATEMENTS.lock()
+    PREPARED_STATEMENTS
+        .lock()
         .map_err(|_| Error::NotConnected)?
         .insert(owned_stmt, prepared_stmt);
 
-    Ok(())    
+    Ok(())
 }
 
 /// Hidden function so set the pool from the `config` module.
@@ -123,7 +120,7 @@ impl ConnectionBuilder {
             PgConfig::from_str(&self.conn_string).map_err(|_| Error::InvalidPoolConfig)?;
 
         let manager = Manager::new(pg_config);
-        
+
         let pool = Pool::builder(manager)
             .build()
             .map_err(|_| Error::InvalidPoolConfig)?;

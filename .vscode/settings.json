@@ -1,6 +1,6 @@
 {
     "rust-analyzer.linkedProjects": [
         "./pg-worm/Cargo.toml",
-        "./pg-worm/Cargo.toml"
+        "./pg-worm-derive/Cargo.toml"
     ]
 }

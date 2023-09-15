@@ -7,7 +7,7 @@ mod table;
 mod transaction;
 mod update;
 
-pub use table::{Column, TypedColumn};
+pub use table::{Column, ColumnInfo, TypedColumn};
 
 use std::{
     future::{Future, IntoFuture},

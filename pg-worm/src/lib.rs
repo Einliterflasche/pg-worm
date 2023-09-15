@@ -28,7 +28,7 @@ and you are ready to go!
 
 Here's a quick example:
 
-```rust
+```ignore
 // Import the prelude to get started quickly
 use pg_worm::prelude::*;
 
@@ -236,7 +236,7 @@ _*`T` must be another supported type. Nesting and mixing `Option`/`Vec` is curre
 ### JSON, timestamps and more
 are supported, too. To use them activate the respective feature, like so:
 
-```ignore
+```toml
 # Cargo.toml
 [dependencies]
 pg-worm = { version = "latest-version", features = ["foo"] }
@@ -270,7 +270,7 @@ This is done by using one of the two attributes `pg-worm` exposes.
 
 The `#[table]` attribute can be used to pass configurations to a `Model` which affect the respective table itself.
 
-```rust
+```ignore
 use pg_worm::prelude::*;
 
 #[derive(Model)]
@@ -288,7 +288,7 @@ Option | Meaning | Usage | Default
 
 The `#[column]` attribute can be used to pass configurations to a `Model`'s field which affect the respective column.
 
-```rust
+```ignore
 use pg_worm::prelude::*;
 
 #[derive(Model)]
@@ -301,17 +301,16 @@ struct Book {
 Option | Meaning | Usage | Default
 -------|---------|-------|--------
 `column_name` | Set this column's name. | `#[column(column_name = "new_column_name")]` | The fields's name converted to snake case using [this crate](https://crates.io/crates/convert_case).
-`primary_key` | Make this column the `PRIMARY KEY`. Only use this once per `Model`. If you want this column to be auto generated use `auto` as well. | `#[column(primary_key)]` | `false`
+`primary_key` | Make this column the primary key. Only use this once per `Model`. If you want this column to be auto generated use `auto` as well. | `#[column(primary_key)]` | `false`
 `auto` | Make this column auto generated. Works only for `i16`, `i32` and `i64`, as well as `Uuid` *if* the `"uuid"` feature has been enabled *and* you use PostgreSQL version 13 or later. | `#[column(auto)]` | `false`
-`unique` | Make this column `UNIQUE`. | `#[column(unique)]` | `false`
+
 
 ## MSRV
 The minimum supported rust version is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
 
 ## License
 This project is dual-licensed under the MIT and Apache 2.0 licenses.
-
-*/
+ */
 
 #![deny(missing_docs)]
 
@@ -336,8 +335,8 @@ pub use futures_util;
 #[doc(hidden)]
 pub use tokio_postgres as pg;
 
-pub use pool::{fetch_client, set_pool};
 pub use pg_worm_derive::Model;
+pub use pool::{fetch_client, set_pool};
 
 /// This module contains all necessary imports to get you started
 /// easily.
@@ -431,7 +430,6 @@ pub trait Model<T>: FromRow {
     /// You can reference the params by using `?` as a placeholder.
     fn query(_: impl Into<String>, _: Vec<&(dyn ToSql + Sync)>) -> Query<'_, Vec<T>>;
 }
-
 
 /// Create a table for your model.
 ///

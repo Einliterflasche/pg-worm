@@ -53,6 +53,15 @@ pub struct Column {
     generated: bool,
 }
 
+///
+#[doc(hidden)]
+pub trait ColumnInfo {
+    ///
+    const TABLE_NAME: &'static str;
+    ///
+    const COLUMN_NAME: &'static str;
+}
+
 macro_rules! impl_prop_typed_col {
     ($($prop:ident),+) => {
         $(
