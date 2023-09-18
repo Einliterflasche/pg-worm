@@ -8,7 +8,9 @@ use tokio_postgres::types::ToSql;
 
 use crate::TypedColumn;
 
-use super::{push_all_with_sep, Executable, PushChunk, Query, SqlChunk, ToQuery, Where};
+use super::{
+    push_all_with_sep, replace_question_marks, PushChunk, Query, QueryOutcome, SqlChunk, Where,
+};
 
 /// State representing that an UPDATE
 /// has been set.
@@ -31,8 +33,6 @@ pub struct Update<'a, State = NoneSet> {
     where_: Where<'a>,
     state: PhantomData<State>,
 }
-
-impl<'a> ToQuery<'a, u64> for Update<'a, SomeSet> {}
 
 impl<'a, T> Update<'a, T> {
     /// Begin building a new `UPDATE` query.
@@ -103,36 +103,41 @@ impl<'a, T> Update<'a, T> {
     }
 }
 
-impl<'a> PushChunk<'a> for Update<'a, SomeSet> {
-    fn push_to_buffer<T>(&mut self, buffer: &mut super::Query<'a, T>) {
+impl<'a> From<Update<'a, SomeSet>> for Query<'a, u64> {
+    fn from(mut from: Update<'a, SomeSet>) -> Self {
+        let mut buffer = Query::default();
+
         // Which table to update
         buffer.0.push_str("UPDATE ");
-        buffer.0.push_str(self.table);
+        buffer.0.push_str(from.table);
 
         // Which updates to make
         buffer.0.push_str(" SET ");
-        push_all_with_sep(&mut self.updates, buffer, ", ");
+        push_all_with_sep(&mut from.updates, &mut buffer, ", ");
 
         // Which rows to update
-        if !self.where_.is_empty() {
+        if !from.where_.is_empty() {
             buffer.0.push_str(" WHERE ");
-            self.where_.push_to_buffer(buffer);
+            from.where_.push_to_buffer(&mut buffer);
         }
+
+        buffer.0 = replace_question_marks(buffer.0);
+
+        buffer
     }
 }
 
 impl<'a> IntoFuture for Update<'a, SomeSet>
 where
-    Update<'a, SomeSet>: ToQuery<'a, u64>,
-    Query<'a, u64>: Executable<Output = u64>,
+    Query<'a, u64>: From<Update<'a, SomeSet>>,
 {
     type Output = Result<u64, crate::Error>;
 
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
 
-    fn into_future(mut self) -> Self::IntoFuture {
-        let query = self.to_query();
+    fn into_future(self) -> Self::IntoFuture {
+        let query = Query::from(self);
 
-        Box::pin(async move { query.exec().await })
+        Box::pin(async move { u64::exec(&query.0, query.1.as_slice()).await })
     }
 }

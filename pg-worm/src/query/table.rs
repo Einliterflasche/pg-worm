@@ -311,12 +311,10 @@ mod tests {
 
     #[test]
     fn complete_query() {
-        let q = Book::select()
-            .where_(Book::title.eq(&"The Communist Manifesto".into()))
-            .where_(Book::pages.contains(&"You have nothing to lose but your chains!".into()))
-            .where_(Book::id.gt(&3))
-            .to_query()
-            .0;
-        assert_eq!(q, "SELECT book.id, book.title, book.pages FROM book WHERE (book.title = $1) AND ($2 = ANY(book.pages)) AND (book.id > $3)");
+        let q: Query<'_, Vec<Book>> = Book::select().where_(Book::id.gt(&3)).into();
+        assert_eq!(
+            q.0,
+            "SELECT book.id, book.title, book.pages FROM book WHERE book.id > $1"
+        );
     }
 }

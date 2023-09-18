@@ -5,15 +5,13 @@ use std::{
 
 use tokio_postgres::types::ToSql;
 
-use super::{Executable, PushChunk, ToQuery, Where};
+use super::{replace_question_marks, PushChunk, Query, QueryOutcome, Where};
 
 /// A struct for building `DELETE` queries.
 pub struct Delete<'a> {
     table: &'static str,
     where_: Where<'a>,
 }
-
-impl<'a> ToQuery<'a, u64> for Delete<'a> {}
 
 impl<'a> Delete<'a> {
     /// Start building a new `DELETE` query.
@@ -61,15 +59,20 @@ impl<'a> Delete<'a> {
     }
 }
 
-impl<'a> PushChunk<'a> for Delete<'a> {
-    fn push_to_buffer<T>(&mut self, buffer: &mut super::Query<'a, T>) {
+impl<'a> From<Delete<'a>> for Query<'a, u64> {
+    fn from(mut delete: Delete<'a>) -> Query<'a, u64> {
+        let mut buffer = Query::default();
         buffer.0.push_str("DELETE FROM ");
-        buffer.0.push_str(self.table);
+        buffer.0.push_str(delete.table);
 
-        if !self.where_.is_empty() {
+        if !delete.where_.is_empty() {
             buffer.0.push_str(" WHERE ");
-            self.where_.push_to_buffer(buffer);
+            delete.where_.push_to_buffer(&mut buffer);
         }
+
+        buffer.0 = replace_question_marks(buffer.0);
+
+        buffer
     }
 }
 
@@ -77,10 +80,10 @@ impl<'a> IntoFuture for Delete<'a> {
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
     type Output = Result<u64, crate::Error>;
 
-    fn into_future(mut self) -> Self::IntoFuture {
-        let query = self.to_query();
+    fn into_future(self) -> Self::IntoFuture {
+        let query = Query::from(self);
 
-        Box::pin(async move { query.exec().await })
+        Box::pin(async move { u64::exec(&query.0, query.1.as_slice()).await })
     }
 }
 
@@ -98,14 +101,14 @@ mod tests {
 
     #[test]
     fn delete_statement() {
-        let q = Book::delete().to_query().0;
-        assert_eq!(q, "DELETE FROM book");
+        let q: Query<'_, u64> = Book::delete().into();
+        assert_eq!(q.0, "DELETE FROM book");
     }
 
     #[test]
     fn delete_statement_with_where() {
-        let q = Book::delete().where_(Book::id.eq(&4)).to_query().0;
+        let q: Query<'_, u64> = Book::delete().where_(Book::id.eq(&4)).into();
 
-        assert_eq!(q, "DELETE FROM book WHERE book.id = $1")
+        assert_eq!(q.0, "DELETE FROM book WHERE book.id = $1")
     }
 }

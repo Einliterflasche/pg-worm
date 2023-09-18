@@ -19,7 +19,7 @@ use std::{
 use async_trait::async_trait;
 use tokio_postgres::{types::ToSql, Row, Transaction as PgTransaction};
 
-use crate::{fetch_client, Client, Error};
+use crate::{fetch_client, Client, Error, FromRow};
 
 pub use delete::Delete;
 pub use select::Select;
@@ -46,21 +46,60 @@ pub trait Executor {
 /// Trait used to mark exectuable queries. It is used
 /// to make use of generics for executing them.
 #[async_trait]
-pub trait Executable {
-    /// What output should this query result in?
-    type Output;
-
+pub trait QueryOutcome: Sized {
     /// The actual function for executing a query.
-    async fn exec<'a>(&self) -> Result<Self::Output, crate::Error> {
+    async fn exec(statement: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Self, crate::Error> {
         let client = fetch_client().await?;
-        self.exec_with(&client).await
+        Self::exec_with(statement, params, &client).await
     }
 
     /// Execute the query given any viable `Executor`
     async fn exec_with(
-        &self,
-        client: impl Executor + Send + Sync,
-    ) -> Result<Self::Output, crate::Error>;
+        statement: &str,
+        params: &[&(dyn ToSql + Sync)],
+        client: impl Executor + Sync + Send,
+    ) -> Result<Self, crate::Error>;
+}
+
+#[async_trait]
+impl QueryOutcome for u64 {
+    async fn exec_with(
+        statement: &str,
+        params: &[&(dyn ToSql + Sync)],
+        client: impl Executor + Sync + Send,
+    ) -> Result<u64, crate::Error> {
+        client.execute(statement, params).await
+    }
+}
+
+#[async_trait]
+impl<T> QueryOutcome for Vec<T>
+where
+    T: FromRow,
+{
+    async fn exec_with(
+        statement: &str,
+        params: &[&(dyn ToSql + Sync)],
+        client: impl Executor + Sync + Send,
+    ) -> Result<Vec<T>, crate::Error> {
+        let res = client.query(statement, params).await?;
+        res.into_iter().map(T::try_from).collect()
+    }
+}
+
+#[async_trait]
+impl<T> QueryOutcome for Option<T>
+where
+    T: FromRow,
+{
+    async fn exec_with(
+        statement: &str,
+        params: &[&(dyn ToSql + Sync)],
+        client: impl Executor + Sync + Send,
+    ) -> Result<Option<T>, crate::Error> {
+        let res = client.query(statement, params).await?;
+        res.into_iter().map(T::try_from).next().transpose()
+    }
 }
 
 /// A struct for storing a complete query along with
@@ -69,24 +108,6 @@ pub trait Executable {
 /// Depending on the output type, [`Executable`] is implemented differently
 /// to allow for easy parsing.
 pub struct Query<'a, T = Vec<Row>>(pub String, Vec<&'a (dyn ToSql + Sync)>, PhantomData<T>);
-
-/// A trait implemented by query builders
-pub trait ToQuery<'a, T>: PushChunk<'a> {
-    /// A default implementation for building a query which can then be executed.
-    fn to_query(&mut self) -> Query<'a, T> {
-        // Create a new query object.
-        let mut query = Query::default();
-
-        // Push the query statement and parameters.
-        self.push_to_buffer(&mut query);
-
-        // Replace question mark placeholders with the postgres ones
-        query.0 = replace_question_marks(query.0);
-
-        // Return the exectuable query.
-        query
-    }
-}
 
 /// A basic chunk of SQL and it's params.
 ///
@@ -211,70 +232,17 @@ impl Executor for &Client {
     }
 }
 
-#[async_trait]
-impl<'a, T> Executable for Query<'a, Vec<T>>
-where
-    T: TryFrom<Row, Error = crate::Error> + Send + Sync,
-{
-    type Output = Vec<T>;
-
-    async fn exec_with(
-        &self,
-        client: impl Executor + Send + Sync,
-    ) -> Result<Self::Output, crate::Error> {
-        let rows = client.query(&self.0, &self.1).await?;
-
-        rows.into_iter().map(|i| T::try_from(i)).collect()
-    }
-}
-
-#[async_trait]
-impl<'a, T> Executable for Query<'a, Option<T>>
-where
-    T: TryFrom<Row, Error = crate::Error> + Send + Sync,
-{
-    type Output = Option<T>;
-
-    async fn exec_with(
-        &self,
-        client: impl Executor + Send + Sync,
-    ) -> Result<Self::Output, crate::Error> {
-        let rows = client.query(&self.0, &self.1).await?;
-
-        rows.into_iter()
-            .map(|i: Row| T::try_from(i))
-            .next()
-            .transpose()
-    }
-}
-
-#[async_trait]
-impl<'a> Executable for Query<'a, u64> {
-    type Output = u64;
-
-    async fn exec_with(
-        &self,
-        client: impl Executor + Send + Sync,
-    ) -> Result<Self::Output, crate::Error> {
-        client
-            .execute(&self.0, &self.1)
-            .await
-            .map_err(crate::Error::from)
-    }
-}
-
 /// Implement IntoFuture for Query so that any executable Query
 /// may be executed by calling `.await`.
 impl<'a, T: Send + 'a> IntoFuture for Query<'a, T>
 where
-    Query<'a, T>: Executable<Output = T>,
-    T: Sync,
+    T: QueryOutcome + Sync,
 {
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
     type Output = Result<T, crate::Error>;
 
     fn into_future(self) -> Self::IntoFuture {
-        Box::pin(async move { self.exec().await })
+        Box::pin(async move { T::exec(&self.0, self.1.as_slice()).await })
     }
 }
 

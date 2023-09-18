@@ -7,7 +7,7 @@ use tokio_postgres::Transaction as PgTransaction;
 
 use crate::{fetch_client, pool::Client as PgClient, Error};
 
-use super::{Executable, Query, ToQuery};
+use super::{Query, QueryOutcome};
 
 struct PinnedClient(pub *mut PgClient);
 
@@ -92,12 +92,12 @@ impl<'a> Transaction<'a> {
 
     /// Execute a query  as part of this transaction
     /// and return its return value.
-    pub async fn execute<'b, Q, T>(&self, mut query: Q) -> Result<T, Error>
+    pub async fn execute<'b, Q, T>(&self, into_query: Q) -> Result<T, Error>
     where
-        Q: ToQuery<'b, T>,
-        Query<'b, T>: Executable<Output = T>,
+        T: QueryOutcome,
+        Query<'b, T>: From<Q>,
     {
-        let query = query.to_query();
-        query.exec_with(&self.transaction).await
+        let query = Query::from(into_query);
+        T::exec_with(&query.0, query.1.as_slice(), &self.transaction).await
     }
 }

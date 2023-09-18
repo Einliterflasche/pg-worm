@@ -25,6 +25,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     Connection::build("postgres://postgres:postgres@localhost:5432")
         .max_pool_size(16)
         .connect()?;
+    println!("Hello World!");
 
     // Then, create the tables for your models.
     // Use `register!` if you want to fail if a

@@ -7,7 +7,7 @@ use std::{
 
 use tokio_postgres::{types::ToSql, Row};
 
-use super::{Executable, PushChunk, Query, ToQuery, Where};
+use super::{replace_question_marks, PushChunk, Query, QueryOutcome, Where};
 use crate::Column;
 
 /// A struct which holds the information needed to build
@@ -20,8 +20,6 @@ pub struct Select<'a, T = Vec<Row>> {
     limit: Option<u64>,
     offset: Option<u64>,
 }
-
-impl<'a, T> ToQuery<'a, T> for Select<'a, T> {}
 
 impl<'a, T> Select<'a, T> {
     #[doc(hidden)]
@@ -92,12 +90,14 @@ impl<'a, T> Select<'a, T> {
     }
 }
 
-impl<'a, T> PushChunk<'a> for Select<'a, T> {
-    fn push_to_buffer<B>(&mut self, buffer: &mut Query<'a, B>) {
+impl<'a, T> From<Select<'a, T>> for Query<'a, T> {
+    fn from(mut from: Select<'a, T>) -> Self {
+        let mut buffer = Query::default();
+
         buffer.0.push_str("SELECT ");
 
         // Push the selected columns
-        let cols = self
+        let cols = from
             .cols
             .iter()
             .map(|i| i.full_name())
@@ -108,39 +108,43 @@ impl<'a, T> PushChunk<'a> for Select<'a, T> {
         // Push the table from which the columns
         // are selected
         buffer.0.push_str(" FROM ");
-        buffer.0.push_str(self.from);
+        buffer.0.push_str(from.from);
 
         // If it exists, push the WHERE clause
-        if !self.where_.is_empty() {
+        if !from.where_.is_empty() {
             buffer.0.push_str(" WHERE ");
-            self.where_.push_to_buffer(buffer);
+            from.where_.push_to_buffer(&mut buffer);
         }
 
         // If set, add a LIMIT
-        if let Some(limit) = self.limit {
+        if let Some(limit) = from.limit {
             buffer.0.push_str(" LIMIT ");
             buffer.0.push_str(&limit.to_string());
         }
 
         // If set, add an OFFSET
-        if let Some(offset) = self.offset {
+        if let Some(offset) = from.offset {
             buffer.0.push_str(" OFFSET ");
             buffer.0.push_str(&offset.to_string())
         }
+
+        buffer.0 = replace_question_marks(buffer.0);
+
+        buffer
     }
 }
 
 impl<'a, T: Sync + Send + 'a> IntoFuture for Select<'a, T>
 where
-    Select<'a, T>: ToQuery<'a, T>,
-    Query<'a, T>: Executable<Output = T>,
+    T: QueryOutcome,
+    Query<'a, T>: From<Select<'a, T>>,
 {
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'a>>;
     type Output = Result<T, crate::Error>;
 
-    fn into_future(mut self) -> Self::IntoFuture {
-        let query = self.to_query();
-        Box::pin(async move { query.exec().await })
+    fn into_future(self) -> Self::IntoFuture {
+        let query: Query<'_, T> = self.into();
+        Box::pin(async move { T::exec(&query.0, query.1.as_slice()).await })
     }
 }
 
@@ -159,13 +163,13 @@ mod test {
 
     #[test]
     fn select_limit() {
-        let query = Book::select().limit(3).to_query().0;
-        assert_eq!(query, "SELECT book.id, book.title FROM book LIMIT 3");
+        let query: Query<'_, Vec<Book>> = Book::select().limit(3).into();
+        assert_eq!(query.0, "SELECT book.id, book.title FROM book LIMIT 3");
     }
 
     #[test]
     fn select_offset() {
-        let query = Book::select().offset(4).to_query().0;
-        assert_eq!(query, "SELECT book.id, book.title FROM book OFFSET 4");
+        let query: Query<'_, Vec<Book>> = Book::select().offset(4).into();
+        assert_eq!(query.0, "SELECT book.id, book.title FROM book OFFSET 4");
     }
 }

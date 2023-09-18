@@ -3,3 +3,4 @@ members = [
     "pg-worm",
     "pg-worm-derive"
 ]
+resolver = "2"

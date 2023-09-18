@@ -102,7 +102,7 @@ impl ModelInput {
     }
 
     fn impl_colun_info(&self) -> TokenStream {
-        let impls = self.all_fields().map(|f| f.impl_column_info(&self));
+        let impls = self.all_fields().map(|f| f.impl_column_info(self));
 
         quote!(
             #(
@@ -349,7 +349,10 @@ impl ModelField {
         };
         let path = &path.path;
         let Some(last_seg) = path.segments.last() else {
-            spanned_error!("pg-worm: invalid type path (needs at least one segment)", &ty)
+            spanned_error!(
+                "pg-worm: invalid type path (needs at least one segment)",
+                &ty
+            )
         };
 
         match last_seg.ident.to_string().as_str() {
@@ -401,22 +404,34 @@ impl ModelField {
         };
 
         let Some(segment) = path.path.segments.last() else {
-            spanned_error!("pg-worm: unsupported type path, must have at least one segment", &ty)
+            spanned_error!(
+                "pg-worm: unsupported type path, must have at least one segment",
+                &ty
+            )
         };
 
         let mut id = &segment.ident;
 
         if self.array || self.nullable {
             let PathArguments::AngleBracketed(args) = &segment.arguments else {
-                spanned_error!("pg-worm: unsupported type, Option/Vec need generic argument", &ty)
+                spanned_error!(
+                    "pg-worm: unsupported type, Option/Vec need generic argument",
+                    &ty
+                )
             };
 
             let Some(arg) = args.args.first() else {
-                spanned_error!("pg-worm: unsupported type, Option/Vec need generic argument", &ty)
+                spanned_error!(
+                    "pg-worm: unsupported type, Option/Vec need generic argument",
+                    &ty
+                )
             };
 
             let syn::GenericArgument::Type(arg_type) = arg else {
-                spanned_error!("pg-worm: unsupported Option/Vec generic argument, must be valid type", &ty)
+                spanned_error!(
+                    "pg-worm: unsupported Option/Vec generic argument, must be valid type",
+                    &ty
+                )
             };
 
             let syn::Type::Path(path) = &arg_type else {
@@ -424,7 +439,10 @@ impl ModelField {
             };
 
             let Some(segment) = path.path.segments.last() else {
-                spanned_error!("pg-worm: unsupported type path, must have at least one segment", &ty)
+                spanned_error!(
+                    "pg-worm: unsupported type path, must have at least one segment",
+                    &ty
+                )
             };
 
             id = &segment.ident;

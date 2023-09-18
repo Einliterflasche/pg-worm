@@ -346,7 +346,7 @@ pub mod prelude {
     pub use crate::pool::Connection;
 
     pub use crate::query::{
-        Column, Executable, NoneSet, Query, Select, SomeSet, ToQuery, Transaction, TypedColumn,
+        Column, NoneSet, Query, QueryOutcome, Select, SomeSet, Transaction, TypedColumn,
     };
     pub use std::ops::Deref;
     pub use std::str::FromStr;
