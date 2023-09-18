@@ -302,6 +302,7 @@ Option | Meaning | Usage | Default
 `column_name` | Set this column's name. | `#[column(column_name = "new_column_name")]` | The fields's name converted to snake case using [this crate](https://crates.io/crates/convert_case).
 `primary_key` | Make this column the primary key. Only use this once per `Model`. If you want this column to be auto generated use `auto` as well. | `#[column(primary_key)]` | `false`
 `auto` | Make this column auto generated. Works only for `i16`, `i32` and `i64`, as well as `Uuid` *if* the `"uuid"` feature has been enabled *and* you use PostgreSQL version 13 or later. | `#[column(auto)]` | `false`
+`unique` | Add the `UNIQUE` constraint to this column | `#[column(unique)]` | `false`
 
 
 ## MSRV

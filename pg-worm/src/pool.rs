@@ -52,7 +52,7 @@ struct Connector<Tls> {
     tls: Tls,
 }
 
-/// A struct for building a [`Pool`]  according to your needs.
+/// A struct for building a connection pool according to your needs.
 pub struct ConnectionBuilder {
     conn_string: String,
 }

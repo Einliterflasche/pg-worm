@@ -104,9 +104,6 @@ where
 
 /// A struct for storing a complete query along with
 /// parameters and output type.
-///
-/// Depending on the output type, [`Executable`] is implemented differently
-/// to allow for easy parsing.
 pub struct Query<'a, T = Vec<Row>>(pub String, Vec<&'a (dyn ToSql + Sync)>, PhantomData<T>);
 
 /// A basic chunk of SQL and it's params.
