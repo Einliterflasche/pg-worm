@@ -28,7 +28,7 @@ and you are ready to go!
 
 Here's a quick example:
 
-```ignore
+```
 // Import the prelude to get started quickly
 use pg_worm::prelude::*;
 
@@ -51,7 +51,9 @@ struct Author {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First create a connection. This can be only done once.
-    Connection::build("postgres://postgres:postgres@localhost:5432").connect()?;
+    Connection::build("postgres://postgres:postgres@localhost:5432")
+        .connect()
+        .await?;
 
     // Then, create tables for your models.
     // Use `try_create_table!` if you want to fail if a

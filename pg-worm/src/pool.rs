@@ -74,16 +74,18 @@ pub async fn fetch_prepared_client() -> Result<&'static Client, Error> {
     PREPARED_CLIENT.get().ok_or(Error::NotConnected)
 }
 
+/// This functions
 #[doc(hidden)]
 #[inline]
-pub async fn ensure_prepared(statement: &str) -> Result<(), Error> {
-    let is_prepared = PREPARED_STATEMENTS
+pub async fn ensure_prepared(statement: &str) -> Result<Statement, Error> {
+    let prepared_stmt = PREPARED_STATEMENTS
         .lock()
         .map_err(|_| Error::NotConnected)?
-        .contains_key(statement);
+        .get(statement)
+        .cloned();
 
-    if is_prepared {
-        return Ok(());
+    if let Some(statement) = prepared_stmt {
+        return Ok(statement);
     }
 
     let prepared_stmt = fetch_prepared_client().await?.prepare(statement).await?;
@@ -92,14 +94,17 @@ pub async fn ensure_prepared(statement: &str) -> Result<(), Error> {
     PREPARED_STATEMENTS
         .lock()
         .map_err(|_| Error::NotConnected)?
-        .insert(owned_stmt, prepared_stmt);
+        .insert(owned_stmt, prepared_stmt.clone());
 
-    Ok(())
+    Ok(prepared_stmt)
 }
 
 /// Hidden function so set the pool from the `config` module.
 #[doc(hidden)]
-pub fn set_pool(pool: Pool) -> Result<(), Error> {
+pub async fn set_pool(pool: Pool) -> Result<(), Error> {
+    PREPARED_CLIENT
+        .set(pool.get().await.map_err(|_| Error::ConnectionBuildError)?)
+        .map_err(|_| Error::AlreadyConnected)?;
     POOL.set(pool).map_err(|_| Error::AlreadyConnected)
 }
 
@@ -115,7 +120,7 @@ impl Connection {
 impl ConnectionBuilder {
     /// Finish building and set up the pool. Does not actually connect until
     /// the first `Client`s are retrieved.
-    pub fn connect(self) -> Result<(), Error> {
+    pub async fn connect(self) -> Result<(), Error> {
         let pg_config =
             PgConfig::from_str(&self.conn_string).map_err(|_| Error::InvalidPoolConfig)?;
 
@@ -124,7 +129,7 @@ impl ConnectionBuilder {
         let pool = Pool::builder(manager)
             .build()
             .map_err(|_| Error::InvalidPoolConfig)?;
-        set_pool(pool)
+        set_pool(pool).await
     }
 
     /// Set the maximum amount of Connections in the pool.

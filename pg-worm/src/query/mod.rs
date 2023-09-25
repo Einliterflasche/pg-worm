@@ -19,7 +19,7 @@ use std::{
 use async_trait::async_trait;
 use tokio_postgres::{types::ToSql, Row, Transaction as PgTransaction};
 
-use crate::{fetch_client, Client, Error, FromRow};
+use crate::{fetch_client, pool::fetch_prepared_client, Client, Error, FromRow};
 
 pub use delete::Delete;
 pub use select::Select;
@@ -61,45 +61,11 @@ pub trait QueryOutcome: Sized {
     ) -> Result<Self, crate::Error>;
 }
 
+///
 #[async_trait]
-impl QueryOutcome for u64 {
-    async fn exec_with(
-        statement: &str,
-        params: &[&(dyn ToSql + Sync)],
-        client: impl Executor + Sync + Send,
-    ) -> Result<u64, crate::Error> {
-        client.execute(statement, params).await
-    }
-}
-
-#[async_trait]
-impl<T> QueryOutcome for Vec<T>
-where
-    T: FromRow,
-{
-    async fn exec_with(
-        statement: &str,
-        params: &[&(dyn ToSql + Sync)],
-        client: impl Executor + Sync + Send,
-    ) -> Result<Vec<T>, crate::Error> {
-        let res = client.query(statement, params).await?;
-        res.into_iter().map(T::try_from).collect()
-    }
-}
-
-#[async_trait]
-impl<T> QueryOutcome for Option<T>
-where
-    T: FromRow,
-{
-    async fn exec_with(
-        statement: &str,
-        params: &[&(dyn ToSql + Sync)],
-        client: impl Executor + Sync + Send,
-    ) -> Result<Option<T>, crate::Error> {
-        let res = client.query(statement, params).await?;
-        res.into_iter().map(T::try_from).next().transpose()
-    }
+pub trait Prepared<T>: Sized {
+    ///
+    async fn prepared(self) -> Result<T, crate::Error>;
 }
 
 /// A struct for storing a complete query along with
@@ -154,6 +120,20 @@ pub enum Where<'a> {
     Empty,
 }
 
+#[async_trait]
+impl<'a, T, U> Prepared<U> for T
+where
+    Query<'a, U>: From<T>,
+    U: QueryOutcome + Send + Sync,
+    T: Send + Sync,
+{
+    async fn prepared(self) -> Result<U, crate::Error> {
+        let client = fetch_prepared_client().await?;
+        let q: Query<'a, U> = self.into();
+        U::exec_with(&q.0, q.1.as_slice(), client).await
+    }
+}
+
 /// Replace all `?` placeholders with the Postgres variant
 /// `$1`, `$2`, etc.
 fn replace_question_marks(stmt: String) -> String {
@@ -181,6 +161,47 @@ fn replace_question_marks(stmt: String) -> String {
     buf.push_str(&stmt[last_index..]);
 
     buf
+}
+
+#[async_trait]
+impl QueryOutcome for u64 {
+    async fn exec_with(
+        statement: &str,
+        params: &[&(dyn ToSql + Sync)],
+        client: impl Executor + Sync + Send,
+    ) -> Result<u64, crate::Error> {
+        client.execute(statement, params).await
+    }
+}
+
+#[async_trait]
+impl<T> QueryOutcome for Vec<T>
+where
+    T: FromRow,
+{
+    async fn exec_with(
+        statement: &str,
+        params: &[&(dyn ToSql + Sync)],
+        client: impl Executor + Sync + Send,
+    ) -> Result<Vec<T>, crate::Error> {
+        let res = client.query(statement, params).await?;
+        res.into_iter().map(T::try_from).collect()
+    }
+}
+
+#[async_trait]
+impl<T> QueryOutcome for Option<T>
+where
+    T: FromRow,
+{
+    async fn exec_with(
+        statement: &str,
+        params: &[&(dyn ToSql + Sync)],
+        client: impl Executor + Sync + Send,
+    ) -> Result<Option<T>, crate::Error> {
+        let res = client.query(statement, params).await?;
+        res.into_iter().map(T::try_from).next().transpose()
+    }
 }
 
 impl<'a, T> Default for Query<'a, T> {

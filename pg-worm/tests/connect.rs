@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use pg_worm::prelude::*;
+use pg_worm::{prelude::*, query::Prepared};
 
 #[derive(Model)]
 struct Book {
@@ -24,7 +24,8 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     // First create a connection. This can be only done once.
     Connection::build("postgres://postgres:postgres@localhost:5432")
         .max_pool_size(16)
-        .connect()?;
+        .connect()
+        .await?;
     println!("Hello World!");
 
     // Then, create the tables for your models.
@@ -63,6 +64,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         .where_(Book::title.eq(&"The Communist Manifesto".into()))
         .where_(Book::pages.contains(&"You have nothing to lose but your chains!".into()))
         .where_(Book::id.gt(&3))
+        .prepared()
         .await?;
     assert!(manifesto.is_none());
 
