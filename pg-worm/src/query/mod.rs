@@ -2,6 +2,7 @@
 //! as well as struct for representing columns.
 
 mod delete;
+mod insert;
 mod select;
 mod table;
 mod transaction;
@@ -22,6 +23,7 @@ use tokio_postgres::{types::ToSql, Row, Transaction as PgTransaction};
 use crate::{fetch_client, pool::fetch_prepared_client, Client, Error, FromRow};
 
 pub use delete::Delete;
+pub use insert::Insert;
 pub use select::Select;
 pub use transaction::*;
 pub use update::{NoneSet, SomeSet, Update};

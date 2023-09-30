@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use tokio::runtime::Runtime;
 
-use pg_worm::{prelude::*, query::Prepared};
+use pg_worm::prelude::*;
 
 #[allow(dead_code)]
 #[derive(Model)]

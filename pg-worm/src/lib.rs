@@ -320,6 +320,7 @@ This project is dual-licensed under the MIT and Apache 2.0 licenses.
 // This allows importing this crate's contents from pg-worm-derive.
 extern crate self as pg_worm;
 
+pub mod migration;
 pub mod pool;
 pub mod query;
 

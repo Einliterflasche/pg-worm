@@ -86,7 +86,6 @@ impl ModelInput {
         let columns = self.impl_columns();
         let insert = self.impl_insert();
         let model = self.impl_model();
-        let column_info = self.impl_colun_info();
 
         quote!(
             impl #ident {
@@ -97,17 +96,6 @@ impl ModelInput {
 
             #try_from_row
             #model
-            #column_info
-        )
-    }
-
-    fn impl_colun_info(&self) -> TokenStream {
-        let impls = self.all_fields().map(|f| f.impl_column_info(self));
-
-        quote!(
-            #(
-                #impls
-            )*
         )
     }
 
@@ -373,7 +361,8 @@ impl ModelField {
                 "Uuid" => "DEFAULT gen_random_uuid()",
                 "i16" | "i32" | "i64" => "GENERATED ALWAYS AS IDENTITY",
                 _ => spanned_error!("pg-worm: `auto` is only available for integers and uuid (with the `uuid` feature enabled)", &ty)
-            }.to_string();
+            }
+            .to_string();
         }
 
         Ok(field)
@@ -453,6 +442,7 @@ impl ModelField {
             "i16" => Type::INT2,
             "i32" => Type::INT4,
             "i64" => Type::INT8,
+            "u64" => Type::INT8,
             "f32" => Type::FLOAT4,
             "f64" => Type::FLOAT8,
             "bool" => Type::BOOL,
@@ -544,20 +534,6 @@ impl ModelField {
             #[allow(non_upper_case_globals)]
             pub const #ident: pg_worm::query::TypedColumn<#rs_type> = pg_worm::query::TypedColumn::new(#table_name, #col_name)
                 #(#props)*;
-        )
-    }
-
-    fn impl_column_info(&self, table: &ModelInput) -> TokenStream {
-        let model_ident = table.ident();
-        let field_ident = self.ident();
-        let table_name = table.table_name();
-        let col_name = self.column_name();
-
-        quote!(
-            impl pg_worm::query::ColumnInfo for #model_ident::#field_ident {
-                const TABLE_NAME: &'static str = #table_name;
-                const COLUMN_NAME: &'static str = #col_name;
-            }
         )
     }
 }

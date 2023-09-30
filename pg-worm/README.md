@@ -8,14 +8,13 @@
 `pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
 Well, at least that's the goal. 
 
-## Features/Why `pg-worm`?
+## Roadmap
 
-- Existing ORMs are not **`async`**, require you to write migrations or use a cli. 
-`pg-worm`'s explicit goal is to be **easy** and to require **no setup** beyond defining your types. 
-
-- `pg-worm` also features **built-in pooling** and a **concise syntax**.
-
-- `pg-worm` **doesn't get in your way** - easily include raw queries while still profiting off the other features.
+ - [x] Concise, intutitive syntax for `Insert`, `Select`, `Update` and `Delete` queries
+ - [x] Raw queries
+ - [x] Transactions
+ - [ ] Auto migrations not just for table creations
+ - [ ] Make pool accessable to user
 
 ## Usage
 This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) and is intended to be used with [`tokio`](https://tokio.rs/).

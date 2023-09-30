@@ -17,7 +17,7 @@ deadpool = { version = "0.9", default-features = false, features = ["managed"] }
 tokio-postgres = { version = "0.7" } 
 async-trait = "0.1"
 futures-util = { version = "0.3", default-features = false }
-pg-worm-derive = "0.7"
+pg-worm-derive = { version = "0.7", path = "../pg-worm-derive" } 
 tokio = { version = "1", features = ["rt"] }
 once_cell = "1.18"
 hashbrown = "0.14"
