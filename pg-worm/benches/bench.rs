@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use tokio::runtime::Runtime;
 
@@ -45,5 +47,11 @@ fn bench_main(criterion: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_main);
+criterion_group!{
+    name = benches;
+    config = Criterion::default()
+        .sample_size(10)
+        .measurement_time(Duration::from_millis(100_000));
+    targets = bench_main
+}   
 criterion_main!(benches);
