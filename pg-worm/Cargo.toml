@@ -28,9 +28,5 @@ uuid = ["tokio-postgres/with-uuid-1", "pg-worm-derive/uuid"]
 time = ["tokio-postgres/with-time-0_3", "pg-worm-derive/time"]
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["async_tokio"] }
 tokio = { version = "1", features = ["full"] }
 
-[[bench]]
-name = "bench"
-harness = false

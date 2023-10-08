@@ -130,7 +130,7 @@ impl ModelInput {
                     #creation_sql
                 }
 
-                fn columns() -> &'static [&'static dyn Deref<Target = Column>] {
+                fn columns() -> &'static [&'static dyn std::ops::Deref<Target = pg_worm::query::Column>] {
                     &#ident::COLUMNS
                 }
             }
@@ -154,8 +154,8 @@ impl ModelInput {
         let ident = self.ident();
 
         quote!(
-            fn update<'a>() -> pg_worm::query::Update<'a, NoneSet> {
-                pg_worm::query::Update::<NoneSet>::new(#ident::table_name())
+            fn update<'a>() -> pg_worm::query::Update<'a, pg_worm::query::NoneSet> {
+                pg_worm::query::Update::<pg_worm::query::NoneSet>::new(#ident::table_name())
             }
         )
     }
@@ -209,7 +209,7 @@ impl ModelInput {
                 }
             }
 
-            impl FromRow for #ident { }
+            impl pg_worm::FromRow for #ident { }
         )
     }
 
@@ -221,7 +221,7 @@ impl ModelInput {
         let n_fields = self.all_fields().count();
 
         quote!(
-            pub const COLUMNS: [&'static dyn Deref<Target = pg_worm::query::Column>; #n_fields] = [
+            pub const COLUMNS: [&'static dyn std::ops::Deref<Target = pg_worm::query::Column>; #n_fields] = [
                 #(
                     &#ident::#field_idents
                 ),*
@@ -302,7 +302,7 @@ impl ModelInput {
                 ) *
 
                 // Retrieve the client
-                let client = pg_worm::fetch_client().await?;
+                let client = pg_worm::pool::fetch_client().await?;
 
                 // Execute the query
                 client.execute(

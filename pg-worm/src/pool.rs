@@ -23,9 +23,11 @@ static PREPARED_CLIENT: OnceLock<Client> = OnceLock::new();
 static PREPARED_STATEMENTS: Lazy<Arc<Mutex<HashMap<String, Statement>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
-/// The pool which houses all connections to the PostgreSQL sever.
+/// The internal pool which houses all connections to the PostgreSQL sever.
+///
+/// You can also manually fetch a [`Client`] via [`fetch_client`].
 type Pool = managed::Pool<Manager>;
-/// A wrapper around connections to make them poolable.
+/// A wrapper around connections to make them poolable. `Deref`s to [`tokio_postgres::Client`].
 pub type Client = Object<Manager>;
 /// A unit struct which only provides the `build` method.
 pub struct Connection;
@@ -58,7 +60,6 @@ pub struct ConnectionBuilder {
 }
 
 /// Try to fetch a client from the connection pool.
-#[doc(hidden)]
 #[inline]
 pub async fn fetch_client() -> Result<Client, Error> {
     POOL.get()
@@ -68,7 +69,8 @@ pub async fn fetch_client() -> Result<Client, Error> {
         .map_err(|_| Error::NoConnectionInPool)
 }
 
-#[doc(hidden)]
+/// Try to fetch the "prepared" client.
+/// All prepared queries are prepared and executed on this client.
 #[inline]
 pub async fn fetch_prepared_client() -> Result<&'static Client, Error> {
     PREPARED_CLIENT.get().ok_or(Error::NotConnected)

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use pg_worm::{prelude::*, query::Prepared};
+use pg_worm::prelude::*;
+use pg_worm::{force_create_table, pool::Connection, query::Transaction};
 
 #[derive(Model)]
 struct Book {

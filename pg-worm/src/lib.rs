@@ -31,6 +31,7 @@ Here's a quick example:
 ```
 // Import the prelude to get started quickly
 use pg_worm::prelude::*;
+use pg_worm::{pool::Connection, force_create_table, query::Transaction};
 
 #[derive(Model)]
 struct Book {
@@ -328,7 +329,7 @@ use std::ops::Deref;
 
 use pg::types::ToSql;
 use pg::Row;
-use pool::Client;
+use pool::{fetch_client, Client};
 use query::{Column, Delete, Query, Select, TypedColumn, Update};
 use thiserror::Error;
 
@@ -340,20 +341,15 @@ pub use futures_util;
 pub use tokio_postgres as pg;
 
 pub use pg_worm_derive::Model;
-pub use pool::{fetch_client, set_pool};
 
-/// This module contains all necessary imports to get you started
-/// easily.
+/// This module contains traits which need to be in scope.
+/// The except for `Model`, all of these are renamed to `_` so they
+/// will not clutter your namespace.
 pub mod prelude {
-    pub use crate::{force_create_table, try_create_table, FromRow, Model};
-
-    pub use crate::pool::Connection;
-
-    pub use crate::query::{
-        Column, NoneSet, Query, QueryOutcome, Select, SomeSet, Transaction, TypedColumn,
-    };
-    pub use std::ops::Deref;
-    pub use std::str::FromStr;
+    pub use crate::query::{Prepared as _, QueryOutcome as _};
+    pub use crate::{FromRow as _, Model};
+    pub use std::ops::Deref as _;
+    pub use std::str::FromStr as _;
 }
 
 /// An enum representing the errors which are emitted by this crate.

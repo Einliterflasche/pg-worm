@@ -151,8 +151,8 @@ where
 #[cfg(test)]
 mod test {
     #![allow(dead_code)]
-
     use crate::prelude::*;
+    use crate::query::Query;
 
     #[derive(Model)]
     struct Book {

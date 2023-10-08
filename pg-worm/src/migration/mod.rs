@@ -1,12 +1,14 @@
 //! This module contains the logic needed to create automatic migrations.
 
+#![allow(dead_code)]
+
 use std::fmt::Display;
 
 #[derive(Debug, Clone)]
 struct Table {
     name: String,
     columns: Vec<Column>,
-    constraints: Vec<TableConstraint>
+    constraints: Vec<TableConstraint>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,7 +27,7 @@ enum ColumnConstraint {
     ForeignKey(String, String),
     ForeignKeyNamed(String, String, String),
     RawCheck(String),
-    RawCheckNamed(String, String)
+    RawCheckNamed(String, String),
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +38,7 @@ enum TableConstraint {
     Unique(Vec<String>),
     UniqueNamed(String, Vec<String>),
     RawCheck(String),
-    RawCheckNamed(String, String)
+    RawCheckNamed(String, String),
 }
 
 impl Table {
@@ -46,7 +48,7 @@ impl Table {
         Table {
             name: name.into(),
             columns,
-            constraints: Vec::new()
+            constraints: Vec::new(),
         }
     }
 
@@ -124,14 +126,17 @@ impl Up for Table {
 impl Up for Column {
     fn up(&self) -> String {
         let mut up = format!("{} {}", self.name, self.data_type);
-        
+
         if !self.constraints.is_empty() {
             up.push(' ');
-            up.push_str(&self.constraints
-                .iter()
-                .map(|i| i.up())
-                .collect::<Vec<String>>()
-                ._join(" "));
+            up.push_str(
+                &self
+                    .constraints
+                    .iter()
+                    .map(|i| i.up())
+                    .collect::<Vec<String>>()
+                    ._join(" "),
+            );
         }
 
         up
@@ -145,12 +150,12 @@ impl Up for TableConstraint {
         match self {
             C::PrimaryKey(cols) => format!("PRIMARY KEY ({})", cols._join(", ")),
             C::ForeignKey(table, cols) => format!(
-                "FOREIGN KEY ({}) REFERENCES {table} ({})", 
+                "FOREIGN KEY ({}) REFERENCES {table} ({})",
                 cols.iter().map(|i| &i.0)._join(", "),
                 cols.iter().map(|i| &i.1)._join(", ")
             ),
             C::ForeignKeyNamed(name, table, cols) => format!(
-                "CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {table} ({})", 
+                "CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {table} ({})",
                 cols.iter().map(|i| &i.0)._join(", "),
                 cols.iter().map(|i| &i.1)._join(", ")
             ),
@@ -169,12 +174,14 @@ impl Up for ColumnConstraint {
         match self {
             C::NotNull => format!("NOT NULL"),
             C::PrimaryKey => format!("PRIMARY KEY"),
-            C::ForeignKeyNamed(name, table, col) => format!("CONSTRAINT {name} REFERENCES {table} ({col}"),
+            C::ForeignKeyNamed(name, table, col) => {
+                format!("CONSTRAINT {name} REFERENCES {table} ({col}")
+            }
             C::ForeignKey(table, col) => format!("REFERENCES {table} ({col})"),
             C::Unique => format!("UNIQUE"),
             C::UniqueNamed(name) => format!("CONSTRAINT {name} UNIQUE"),
             C::RawCheck(check) => format!("CHECK ({check})"),
-            C::RawCheckNamed(name, check) => format!("CONSTRAINT {name} CHECK ({check})")
+            C::RawCheckNamed(name, check) => format!("CONSTRAINT {name} CHECK ({check})"),
         }
     }
 }
@@ -184,12 +191,16 @@ trait Join {
 }
 
 impl<T, U> Join for T
-where 
+where
     T: IntoIterator<Item = U>,
-    U: Display
+    U: Display,
 {
     fn _join(self, sep: &str) -> String {
-        (*self.into_iter().map(|i| i.to_string()).collect::<Vec<String>>()).join(sep)
+        (*self
+            .into_iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<String>>())
+        .join(sep)
     }
 }
 
@@ -197,7 +208,7 @@ where
 mod tests {
     use crate::migration::Up;
 
-    use super::{Table, Column};
+    use super::{Column, Table};
 
     #[test]
     fn migrate() {

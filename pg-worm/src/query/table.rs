@@ -264,7 +264,7 @@ mod tests {
 
     use crate::{
         prelude::*,
-        query::{PushChunk, Where},
+        query::{PushChunk, Query, Where},
     };
 
     impl<'a> Where<'a> {

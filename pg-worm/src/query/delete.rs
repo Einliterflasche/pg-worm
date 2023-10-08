@@ -92,6 +92,7 @@ mod tests {
     #![allow(dead_code)]
 
     use pg_worm::prelude::*;
+    use pg_worm::Query;
 
     #[derive(Model)]
     struct Book {
