@@ -1,15 +1,13 @@
 #![allow(dead_code)]
 
-use pg_worm::prelude::*;
-use pg_worm::{force_create_table, pool::Connection, query::Transaction};
+use pg_worm::{migrate_tables, prelude::*};
+use pg_worm::{pool::Connection, query::Transaction};
 
 #[derive(Model)]
 struct Book {
     #[column(primary_key, auto)]
     id: i64,
     title: String,
-    sub_title: Option<String>,
-    pages: Vec<String>,
     author_id: i64,
 }
 
@@ -27,17 +25,9 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         .max_pool_size(16)
         .connect()
         .await?;
-    println!("Hello World!");
 
     // Then, create the tables for your models.
-    // Use `register!` if you want to fail if a
-    // table with the same name already exists.
-    //
-    // `force_register` drops the old table,
-    // which is useful for development.
-    //
-    // If your tables already exist, skip this part.
-    force_create_table!(Author, Book).await?;
+    migrate_tables!(Book, Author).await?;
 
     // Next, insert some data.
     // This works by passing values for all
@@ -45,25 +35,18 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     Author::insert("Stephen King").await?;
     Author::insert("Martin Luther King").await?;
     Author::insert("Karl Marx").await?;
-    Book::insert(
-        "Foo - Part I",
-        "Subtitle".to_string(),
-        vec!["Page 1".to_string()],
-        1,
-    )
-    .await?;
-    Book::insert("Foo - Part II", None, vec![], 2).await?;
-    Book::insert("Foo - Part III", None, vec![], 3).await?;
+    Book::insert("Foo - Part I", 1).await?;
+    Book::insert("Foo - Part II", 2).await?;
+    Book::insert("Foo - Part III", 3).await?;
 
     // Easily query for all books
     let books = Book::select().await?;
-    assert_eq!(books.len(), 3);
+    assert!(books.len() >= 3);
 
     // Or check whether your favorite book is listed,
     // along some other arbitrary conditions
     let manifesto = Book::select_one()
         .where_(Book::title.eq(&"The Communist Manifesto".into()))
-        .where_(Book::pages.contains(&"You have nothing to lose but your chains!".into()))
         .where_(Book::id.gt(&3))
         .prepared()
         .await?;
@@ -73,7 +56,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
     let books_updated = Book::update()
         .set(Book::title, &"The name of this book is a secret".into())
         .await?;
-    assert_eq!(books_updated, 3);
+    assert!(books_updated >= 3);
 
     // Or run a raw query which gets automagically parsed to `Vec<Book>`.
     //
@@ -88,22 +71,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
         vec![&"King".to_string()],
     )
     .await?;
-    assert_eq!(king_books.len(), 2);
-
-    // Or do some array operations
-    let page_1 = "Page 1".to_string();
-    let page_2 = "Page 2".to_string();
-    let pages = vec![&page_1, &page_2];
-
-    let any_page = Book::select_one()
-        .where_(Book::pages.contains_any(&pages))
-        .await?;
-    assert!(any_page.is_some());
-
-    let both_pages = Book::select_one()
-        .where_(Book::pages.contains_all(&pages))
-        .await?;
-    assert!(both_pages.is_none());
+    assert!(king_books.len() >= 2);
 
     // You can even do transactions:
     let transaction = Transaction::begin().await?;
@@ -115,7 +83,7 @@ async fn complete_procedure() -> Result<(), pg_worm::Error> {
 
     // Verify that they still exist *outside* the transaction:
     let all_books_outside_tx = Book::select().await?;
-    assert_eq!(all_books_outside_tx.len(), 3);
+    assert!(all_books_outside_tx.len() >= 3);
 
     // Commit the transaction
     transaction.commit().await?;

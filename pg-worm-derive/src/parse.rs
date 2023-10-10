@@ -88,14 +88,43 @@ impl ModelInput {
         let model = self.impl_model();
 
         quote!(
+            #[automatically_derived]
             impl #ident {
                 #column_consts
                 #insert
                 #columns
             }
 
+            #[automatically_derived]
             #try_from_row
+            #[automatically_derived]
             #model
+        )
+    }
+
+    fn impl_table(&self) -> TokenStream {
+        let table_name = self.table_name();
+        let primary_keys = self
+            .all_fields()
+            .filter_map(|i| {
+                if !i.primary_key {
+                    None
+                } else {
+                    Some(i.column_name())
+                }
+            })
+            .collect::<Vec<String>>();
+        let columns = self.all_fields().map(|i| i.create_column());
+
+        quote!(
+            fn table() -> ::pg_worm::migration::Table {
+                use ::pg_worm::migration::{Table, Column};
+
+                Table::new(#table_name).primary_key(vec![#(#primary_keys.to_string()), *])
+                #(
+                    .column(#columns)
+                )*
+            }
         )
     }
 
@@ -113,6 +142,7 @@ impl ModelInput {
         let delete = self.impl_delete();
         let update = self.impl_update();
         let query = self.impl_query();
+        let table = self.impl_table();
 
         quote!(
             #[pg_worm::async_trait]
@@ -121,6 +151,7 @@ impl ModelInput {
                 #update
                 #delete
                 #query
+                #table
 
                 fn table_name() -> &'static str {
                     #table_name
@@ -382,6 +413,27 @@ impl ModelField {
         }
 
         self.ident().to_string().to_lowercase()
+    }
+
+    fn create_column(&self) -> TokenStream {
+        let name = self.column_name();
+        let mut dtype = self.try_pg_datatype().unwrap().to_string();
+        if self.array {
+            dtype.push_str("[]");
+        }
+
+        let mut res =
+            quote!(::pg_worm::migration::Column::new(#name.to_string(), #dtype.to_string()));
+
+        if self.unique {
+            res.extend(quote!(.unique()));
+        }
+
+        if !self.nullable {
+            res.extend(quote!(.not_null()));
+        }
+
+        res
     }
 
     /// Get the corresponding postgres type

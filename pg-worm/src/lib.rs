@@ -374,6 +374,10 @@ pub enum Error {
     /// Emitted when no connection could be fetched from the pool.
     #[error("couldn't fetch connection from pool")]
     NoConnectionInPool,
+    /// Emitted when pg-worm couldn't parse the query result into
+    /// the corresponding model.
+    #[error("couldn't parse row into {0}: couldn't read field {1}")]
+    ParseError(&'static str, &'static str),
     /// Errors emitted by the Postgres server.
     ///
     /// Most likely an invalid query.
@@ -400,6 +404,10 @@ pub trait Model<T>: FromRow {
     #[doc(hidden)]
     #[must_use]
     fn _table_creation_sql() -> &'static str;
+
+    /// Returns a table object used to created migrations.
+    #[doc(hidden)]
+    fn table() -> migration::Table;
 
     /// Returns a slice of all columns this model's table has.
     fn columns() -> &'static [&'static dyn Deref<Target = Column>];
@@ -429,6 +437,23 @@ pub trait Model<T>: FromRow {
     ///
     /// You can reference the params by using `?` as a placeholder.
     fn query(_: impl Into<String>, _: Vec<&(dyn ToSql + Sync)>) -> Query<'_, Vec<T>>;
+}
+
+/// A cleaner api for [`migration::migrate_tables`].
+///
+/// Call like this:
+/// ```ignore
+/// #[derive(Model)]
+/// struct Book {
+///     id: 64
+/// }
+///
+/// migrate_tables(Book).await?;
+#[macro_export]
+macro_rules! migrate_tables {
+    ($($x:ty), +) => {
+        $crate::migration::migrate_tables(vec![$(<$x as $crate::Model<$x>>::table()),*])
+    };
 }
 
 /// Create a table for your model.
