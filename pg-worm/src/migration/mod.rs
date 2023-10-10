@@ -4,6 +4,12 @@
 
 use std::fmt::Display;
 
+/// Represents a collection of tables.
+#[derive(Default, Debug, Clone)]
+pub struct Schema {
+    tables: Vec<Table>,
+}
+
 #[derive(Debug, Clone)]
 struct Table {
     name: String,
@@ -18,6 +24,19 @@ struct Column {
     constraints: Vec<ColumnConstraint>,
 }
 
+/// Constraints which may be placed on a table.
+#[derive(Debug, Clone)]
+enum TableConstraint {
+    PrimaryKey(Vec<String>),
+    ForeignKey(String, Vec<(String, String)>),
+    ForeignKeyNamed(String, String, Vec<(String, String)>),
+    Unique(Vec<String>),
+    UniqueNamed(String, Vec<String>),
+    RawCheck(String),
+    RawCheckNamed(String, String),
+}
+
+/// Constraints which may be placed on a column.
 #[derive(Debug, Clone)]
 enum ColumnConstraint {
     Unique,
@@ -30,15 +49,37 @@ enum ColumnConstraint {
     RawCheckNamed(String, String),
 }
 
-#[derive(Debug, Clone)]
-enum TableConstraint {
-    PrimaryKey(Vec<String>),
-    ForeignKey(String, Vec<(String, String)>),
-    ForeignKeyNamed(String, String, Vec<(String, String)>),
-    Unique(Vec<String>),
-    UniqueNamed(String, Vec<String>),
-    RawCheck(String),
-    RawCheckNamed(String, String),
+impl Schema {
+    /// Add a table to this schema.
+    fn table(mut self, table: Table) -> Schema {
+        self.tables.push(table);
+
+        self
+    }
+
+    /// Generate SQL statements which migrate `old` to this schema.
+    pub fn migrate_from(&self, old: &Schema) -> Vec<String> {
+        let mut statements = Vec::new();
+        for table in &self.tables {
+            if let Some(old_table) = old.tables.iter().find(|i| i.name == table.name) {
+                statements.append(&mut table.migrate_without_constraints(old_table));
+            } else {
+                statements.push(table.up());
+            }
+        }
+
+        // Add all constraints only after creating the tables to make sure
+        // the referenced columns exist.
+        let mut tmp = self
+            .tables
+            .iter()
+            .flat_map(|i| i.add_constraints())
+            .collect::<Vec<String>>();
+
+        statements.append(&mut tmp);
+
+        statements
+    }
 }
 
 impl Table {
@@ -77,6 +118,51 @@ impl Table {
 
     fn down(&self) -> String {
         format!("DROP TABLE IF EXISTS {}", self.name)
+    }
+
+    fn migrate_without_constraints(&self, old_table: &Table) -> Vec<String> {
+        let mut statements = Vec::new();
+
+        // If there are any constraints on the old table, drop them
+        statements.push(self.drop_all_constraints_cascading());
+
+        for new_column in &self.columns {
+            if let Some(old_column) = old_table.columns.iter().find(|i| i.name == new_column.name) {
+                // If a column of the same name already exists, change it.
+
+                let mut stmts = new_column
+                    .migrate_without_constraints(old_column)
+                    .iter()
+                    .map(|i| format!("ALTER TABLE {} {}", self.name, i))
+                    .collect::<Vec<String>>();
+                statements.append(&mut stmts);
+            } else {
+                // Else, create a new column
+                statements.push(format!("ALTER TABLE {} {}", self.name, new_column.up()));
+            }
+        }
+
+        statements
+    }
+
+    fn add_constraints(&self) -> Vec<String> {
+        let mut statements = Vec::new();
+
+        for i in &self.columns {
+            let mut stmts = i
+                .add_constraints()
+                .iter()
+                .map(|i| format!("ALTER TABLE {} {}", self.name, i))
+                .collect::<Vec<String>>();
+
+            statements.append(&mut stmts);
+        }
+
+        for i in &self.constraints {
+            statements.push(format!("ALTER TABLE {} {}", self.name, i.migrate_to()));
+        }
+
+        statements
     }
 
     fn drop_all_constraints_cascading(&self) -> String {
@@ -140,43 +226,15 @@ impl Column {
     }
 
     fn up(&self) -> String {
-        let mut up = format!("{} {}", self.name, self.data_type);
-
-        if !self.constraints.is_empty() {
-            up.push(' ');
-            up.push_str(
-                &self
-                    .constraints
-                    .iter()
-                    .map(|i| i.up())
-                    .collect::<Vec<String>>()
-                    ._join(" "),
-            );
-        }
-
-        up
+        format!("{} {}", self.name, self.data_type)
     }
 
     fn down(&self) -> String {
         format!("DROP COLUMN IF EXISTS {}", self.name)
     }
 
-    fn migrate_from(&self, other: &Column, table: &Table) -> Vec<String> {
+    fn migrate_without_constraints(&self, other: &Column) -> Vec<String> {
         let mut statements = Vec::new();
-
-        if other.constraints.len() > 0 {
-            statements.push(table.drop_all_constraints_cascading());
-        }
-
-        if self.constraints.len() > 0 {
-            let mut stmts = self
-                .constraints
-                .iter()
-                .map(|i| i.migrate_to(&self))
-                .collect::<Vec<String>>();
-
-            statements.append(&mut stmts);
-        }
 
         if self.data_type != other.data_type {
             statements.push(format!(
@@ -186,6 +244,13 @@ impl Column {
         }
 
         statements
+    }
+
+    fn add_constraints(&self) -> Vec<String> {
+        self.constraints
+            .iter()
+            .map(|i| i.migrate_to(self))
+            .collect()
     }
 }
 
@@ -211,6 +276,32 @@ impl TableConstraint {
             C::RawCheckNamed(name, check) => format!("CONSTRAINT {name} CHECK ({check})"),
         }
     }
+
+    fn migrate_to(&self) -> String {
+        use TableConstraint as T;
+
+        match self {
+            T::PrimaryKey(columns) => {
+                format!("ADD CONSTRAINT PRIMARY KEY ({})", columns.join(", "))
+            }
+            T::Unique(columns) => format!("ADD UNIQUE ({})", columns.join(", ")),
+            T::UniqueNamed(name, columns) => {
+                format!("ADD CONSTRAINT {name} UNIQUE ({})", columns.join(", "))
+            }
+            T::ForeignKey(table, columns) => format!(
+                "ADD FOREIGN KEY ({}) REFERENCES {table} ({})",
+                columns.iter().map(|i| &i.0)._join(", "),
+                columns.iter().map(|i| &i.1)._join(", ")
+            ),
+            T::ForeignKeyNamed(name, table, columns) => format!(
+                "ADD CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {table} ({})",
+                columns.iter().map(|i| &i.0)._join(", "),
+                columns.iter().map(|i| &i.1)._join(", ")
+            ),
+            T::RawCheck(check) => format!("ADD CHECK ({check})"),
+            T::RawCheckNamed(name, check) => format!("ADD CONSTRAINT {name} CHECK ({check})"),
+        }
+    }
 }
 
 impl ColumnConstraint {
@@ -218,13 +309,13 @@ impl ColumnConstraint {
         use ColumnConstraint as C;
 
         match self {
-            C::NotNull => format!("NOT NULL"),
-            C::PrimaryKey => format!("PRIMARY KEY"),
+            C::NotNull => "NOT NULL".to_string(),
+            C::PrimaryKey => "PRIMARY KEY".to_string(),
+            C::ForeignKey(table, col) => format!("REFERENCES {table} ({col})"),
             C::ForeignKeyNamed(name, table, col) => {
                 format!("CONSTRAINT {name} REFERENCES {table} ({col}")
             }
-            C::ForeignKey(table, col) => format!("REFERENCES {table} ({col})"),
-            C::Unique => format!("UNIQUE"),
+            C::Unique => "UNIQUE".to_string(),
             C::UniqueNamed(name) => format!("CONSTRAINT {name} UNIQUE"),
             C::RawCheck(check) => format!("CHECK ({check})"),
             C::RawCheckNamed(name, check) => format!("CONSTRAINT {name} CHECK ({check})"),
@@ -235,10 +326,20 @@ impl ColumnConstraint {
         use ColumnConstraint as C;
 
         match self {
-            C::NotNull => format!("ALTER COLUMN {} DROP NULL", column.name),
+            C::NotNull => format!("ALTER COLUMN {} SET NOT NULL", column.name),
             C::PrimaryKey => format!("ADD CONSTRAINT PRIMARY KEY ({})", column.name),
             C::Unique => format!("ALTER COLUMN {} SET UNIQUE", column.name),
-            _ => todo!(),
+            C::UniqueNamed(name) => format!("ADD CONSTRAINT {name} UNIQUE ({})", column.name),
+            C::ForeignKey(table, other_column) => format!(
+                "ADD FOREIGN KEY ({}) REFERENCES {table} ({other_column})",
+                column.name
+            ),
+            C::ForeignKeyNamed(name, table, other_column) => format!(
+                "ADD CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {table} ({other_column})",
+                column.name
+            ),
+            C::RawCheck(check) => format!("ADD CHECK ({check})"),
+            C::RawCheckNamed(name, check) => format!("ADD CONSTRAINT {name} CHECK ({check})"),
         }
     }
 }
@@ -265,14 +366,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Column, Table};
+    use super::{Column, Schema, Table};
 
     #[test]
     fn migrate() {
-        let dest = Table::new("book")
-            .column(Column::new("id", "BIGINT").primary_key().not_null())
-            .column(Column::new("title", "TEXT").unique().not_null());
+        let dest = Schema::default().table(
+            Table::new("book")
+                .column(Column::new("id", "BIGINT").primary_key().not_null())
+                .column(Column::new("title", "TEXT").unique().not_null()),
+        );
 
-        dbg!(dest.up());
+        dbg!(dest.migrate_from(&Schema::default()));
     }
 }
