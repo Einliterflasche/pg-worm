@@ -52,7 +52,6 @@ struct Field {
     column_name: String,
     ty: syn::Type,
     primary_key: bool,
-    auto_generate: bool,
 }
 
 impl Model {
