@@ -4,7 +4,7 @@ use super::Query;
 
 type Entry<'a> = (&'static str, &'a (dyn ToSql + Sync));
 
-///
+/// A struct for building insert queries
 pub struct Insert<'a> {
     table: &'static str,
     entries: Vec<Entry<'a>>,
@@ -19,7 +19,7 @@ impl<'a> Insert<'a> {
         }
     }
 
-    ///
+    /// Insert a value into a column
     pub fn entry(mut self, col: &'static str, val: &'a (dyn ToSql + Sync)) -> Self {
         self.entries.push((col, val));
 

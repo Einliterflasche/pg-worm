@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use convert_case::{Case, Casing};
 use proc_macro::{self, TokenStream as OldTokenStream};
 use proc_macro2::{Ident, TokenStream};
-use quote::spanned::Spanned;
+use quote::quote;
 use syn::{
     parse_macro_input, punctuated::Punctuated, Data, DeriveInput, Error, Expr, Fields, Lit, Meta,
 };
@@ -12,10 +12,7 @@ use syn::{
 pub fn derive(input: OldTokenStream) -> OldTokenStream {
     let parsed = parse_macro_input!(input as DeriveInput);
 
-    let _model = match Model::try_from_input(parsed.clone()) {
-        Ok(model) => model,
-        Err(e) => return e.into_compile_error().into(),
-    };
+    let model = Model::try_from_input(parsed.clone());
 
     let mut out = TokenStream::new();
 
@@ -30,13 +27,18 @@ pub fn derive(input: OldTokenStream) -> OldTokenStream {
         );
     }
 
-    out.extend(_model.errs.iter().map(Error::to_compile_error));
+    out.extend(model.errs.iter().map(Error::to_compile_error));
+    out.extend(model.impl_from_row());
+
+    out.extend(model.impl_column_consts());
+    out.extend(model.impl_columns_array());
+    out.extend(model.impl_model());
 
     out.into()
 }
 
 struct Skeleton<T> {
-    val: T,
+    pub val: T,
     errs: Vec<Error>,
 }
 
@@ -55,53 +57,164 @@ struct Field {
 }
 
 impl Model {
-    fn try_from_input(input: DeriveInput) -> Result<Skeleton<Model>, Error> {
+    fn try_from_input(input: DeriveInput) -> Skeleton<Model> {
         let mut errs: Vec<Error> = Vec::new();
+        let mut fields: Vec<syn::Field> = Vec::new();
 
-        let Data::Struct(data_struct) = input.data.clone() else {
-            return Err(Error::new(
-                input.clone().__span(),
+        match input.data.clone() {
+            Data::Enum(_) | Data::Union(_) => errs.push(Error::new_spanned(
+                &input,
                 "pg-worm: `Model` must be derived for struct with named fields",
-            ));
+            )),
+            Data::Struct(data_struct) => match data_struct.fields {
+                Fields::Unnamed(_) | Fields::Unit => errs.push(Error::new_spanned(
+                    data_struct.fields,
+                    "pg-worm: `Model` must be derived for struct with named fields",
+                )),
+                Fields::Named(named_fields) => fields.extend(named_fields.named),
+            },
         };
-
-        let Fields::Named(named_fields) = data_struct.fields else {
-            return Err(Error::new(
-                input.clone().__span(),
-                "pg-worm: `Model` must be derived for struct with named fields",
-            ));
-        };
-
-        let fields = named_fields.named.into_iter().collect::<Vec<_>>();
-
-        if fields.is_empty() {
-            return Err(Error::new(
-                input.ident.clone().span(),
-                "pg-worm: cannot derive `Model` for struct without (named) fields",
-            ));
-        }
 
         let mut parsed_fields = Vec::new();
 
-        for (field, field_errs) in fields.into_iter().map(Field::try_parse) {
-            errs.extend(field_errs);
-            parsed_fields.push(field);
+        if fields.is_empty() {
+            errs.push(Error::new_spanned(
+                &input,
+                "pg-worm: `Model` must be derived for struct with at least one field",
+            ));
         }
 
-        Ok(Skeleton::new(
-            Model {
-                ident: input.ident.clone(),
-                table_name: input.ident.to_string(),
-                primary_keys: vec![],
-                fields: parsed_fields,
-            },
-            errs,
-        ))
+        for skeleton_field in fields.into_iter().map(Field::try_parse) {
+            errs.extend(skeleton_field.errs);
+            parsed_fields.push(skeleton_field.val);
+        }
+
+        let model = Model {
+            ident: input.ident.clone(),
+            table_name: input.ident.to_string(),
+            primary_keys: vec![],
+            fields: parsed_fields,
+        };
+
+        Skeleton::new(model, errs)
+    }
+
+    fn impl_column_consts(&self) -> TokenStream {
+        if self.fields.is_empty() {
+            return quote!();
+        }
+
+        let ident = &self.ident;
+        let consts = self
+            .fields
+            .iter()
+            .map(|i| i.impl_column_const(&self.table_name));
+
+        quote!(
+            #[automatically_derived]
+            impl #ident {
+                #(#consts)*
+            }
+        )
+    }
+
+    fn impl_from_row(&self) -> TokenStream {
+        let field_idents = self.fields.iter().map(|i| &i.ident);
+        let column_names = self.fields.iter().map(|i| &i.column_name);
+        let ident = self.ident.clone();
+
+        if self.fields.is_empty() {
+            return quote!(
+                #[automatically_derived]
+                impl TryFrom<::pg_worm::pg::Row> for #ident {
+                    type Error = ::pg_worm::Error;
+
+                    fn try_from(_: ::pg_worm::pg::Row) -> Result<Self, Self::Error> {
+                        unimplemented!()
+                    }
+                }
+
+                #[automatically_derived]
+                impl ::pg_worm::FromRow for #ident { }
+            );
+        }
+
+        quote!(
+            #[automatically_derived]
+            impl TryFrom<::pg_worm::pg::Row> for #ident {
+                type Error = ::pg_worm::Error;
+
+                fn try_from(value: ::pg_worm::pg::Row) -> Result<Self, Self::Error> {
+                    Ok(#ident {
+                        #(
+                            #field_idents: value.try_get(#column_names)?
+                        ),*
+                    })
+                }
+            }
+
+            #[automatically_derived]
+            impl ::pg_worm::FromRow for #ident { }
+        )
+    }
+
+    fn impl_columns_array(&self) -> TokenStream {
+        let ident = &self.ident;
+        let field_idents = self.fields.iter().map(|i| &i.ident);
+        let num_fields = self.fields.len();
+
+        quote!(
+            impl #ident {
+                #[automatically_derived]
+                const columns: [::pg_worm::query::Column; #num_fields] = [
+                    #(
+                        *#ident::#field_idents
+                    ),*
+                ];
+            }
+        )
+    }
+
+    fn impl_model(&self) -> TokenStream {
+        let ident = &self.ident;
+        let table_name = &self.table_name;
+
+        quote!(
+            #[automatically_derived]
+            impl ::pg_worm::Model<#ident> for #ident {
+                fn table() -> ::pg_worm::migration::Table {
+                    unimplemented!();
+                }
+
+                fn select<'a>() -> ::pg_worm::query::Select<'a, Vec<#ident>> {
+                    ::pg_worm::query::Select::new(&#ident::columns, #table_name)
+                }
+
+                fn select_one<'a>() -> ::pg_worm::query::Select<'a, Option<#ident>> {
+                    ::pg_worm::query::Select::new(&#ident::columns, #table_name)
+                }
+
+                fn update<'a>() -> ::pg_worm::query::Update<'a> {
+                    ::pg_worm::query::Update::new(#table_name)
+                }
+
+
+                fn delete<'a>() -> ::pg_worm::query::Delete<'a> {
+                    ::pg_worm::query::Delete::new(#table_name)
+                }
+
+                fn query<'a>(query: impl Into<String>, params: Vec<&'a (dyn ::pg_worm::pg::types::ToSql + Sync)>)
+                -> ::pg_worm::query::Query<'a, Vec<#ident>> {
+                    let query: String = query.into();
+                    ::pg_worm::query::Query::new(query, params)
+                }
+            }
+        )
     }
 }
 
 impl Field {
-    fn try_parse(value: syn::Field) -> (Self, Vec<Error>) {
+    fn try_parse(value: syn::Field) -> Skeleton<Self> {
         let mut errs = Vec::new();
 
         let attr = value
@@ -154,10 +267,24 @@ impl Field {
             column_name,
             ty: value.ty,
             primary_key,
-            auto_generate: false,
         };
 
-        (field, errs)
+        Skeleton::new(field, errs)
+    }
+
+    fn impl_column_const(&self, table_name: &str) -> TokenStream {
+        let ty = &self.ty;
+        let ident = &self.ident;
+
+        let column_name = &self.column_name;
+
+        quote!(
+            #[automatically_derived]
+            const #ident: ::pg_worm::query::TypedColumn<#ty> = ::pg_worm::query::TypedColumn::new(
+                #table_name,
+                #column_name
+            );
+        )
     }
 }
 

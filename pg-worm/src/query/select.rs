@@ -1,7 +1,6 @@
 use std::{
     future::{Future, IntoFuture},
     marker::PhantomData,
-    ops::Deref,
     pin::Pin,
 };
 
@@ -13,7 +12,7 @@ use crate::Column;
 /// A struct which holds the information needed to build
 /// a `SELECT` query.
 pub struct Select<'a, T = Vec<Row>> {
-    cols: Vec<Column>,
+    cols: &'a [Column],
     from: &'static str,
     where_: Where<'a>,
     marker: PhantomData<T>,
@@ -22,10 +21,10 @@ pub struct Select<'a, T = Vec<Row>> {
 }
 
 impl<'a, T> Select<'a, T> {
-    #[doc(hidden)]
-    pub fn new(cols: &[&dyn Deref<Target = Column>], from: &'static str) -> Select<'a, T> {
+    /// `cols` must not be empty, the function will panic if that's the case
+    pub fn new(cols: &'a [Column], from: &'static str) -> Select<'a, T> {
         Select {
-            cols: cols.iter().map(|i| (***i)).collect(),
+            cols,
             from,
             where_: Where::Empty,
             marker: PhantomData::<T>,
@@ -145,31 +144,5 @@ where
     fn into_future(self) -> Self::IntoFuture {
         let query: Query<'_, T> = self.into();
         Box::pin(async move { T::exec(&query.0, query.1.as_slice()).await })
-    }
-}
-
-#[cfg(test)]
-mod test {
-    #![allow(dead_code)]
-    use crate::prelude::*;
-    use crate::query::Query;
-
-    #[derive(Model)]
-    struct Book {
-        #[column(primary_key, auto)]
-        id: i64,
-        title: String,
-    }
-
-    #[test]
-    fn select_limit() {
-        let query: Query<'_, Vec<Book>> = Book::select().limit(3).into();
-        assert_eq!(query.0, "SELECT book.id, book.title FROM book LIMIT 3");
-    }
-
-    #[test]
-    fn select_offset() {
-        let query: Query<'_, Vec<Book>> = Book::select().offset(4).into();
-        assert_eq!(query.0, "SELECT book.id, book.title FROM book OFFSET 4");
     }
 }

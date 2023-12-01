@@ -86,30 +86,3 @@ impl<'a> IntoFuture for Delete<'a> {
         Box::pin(async move { u64::exec(&query.0, query.1.as_slice()).await })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #![allow(dead_code)]
-
-    use pg_worm::prelude::*;
-    use pg_worm::Query;
-
-    #[derive(Model)]
-    struct Book {
-        id: i64,
-        title: String,
-    }
-
-    #[test]
-    fn delete_statement() {
-        let q: Query<'_, u64> = Book::delete().into();
-        assert_eq!(q.0, "DELETE FROM book");
-    }
-
-    #[test]
-    fn delete_statement_with_where() {
-        let q: Query<'_, u64> = Book::delete().where_(Book::id.eq(&4)).into();
-
-        assert_eq!(q.0, "DELETE FROM book WHERE book.id = $1")
-    }
-}

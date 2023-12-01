@@ -47,42 +47,6 @@ pub struct Column {
     pub column_name: &'static str,
     /// The name of the table this columnn belongs to.
     pub table_name: &'static str,
-    nullable: bool,
-    unique: bool,
-    primary_key: bool,
-    generated: bool,
-}
-
-///
-#[doc(hidden)]
-pub trait ColumnInfo {
-    ///
-    const TABLE_NAME: &'static str;
-    ///
-    const COLUMN_NAME: &'static str;
-}
-
-macro_rules! impl_prop_typed_col {
-    ($($prop:ident),+) => {
-        $(
-            /// Set this property so `true`.
-            pub const fn $prop(mut self) -> TypedColumn<T> {
-                self.column.$prop = true;
-                self
-            }
-        )*
-    };
-}
-
-macro_rules! impl_prop_col {
-    ($($prop:ident),+) => {
-        $(
-            /// Returns this propertie's value.
-            pub const fn $prop(&self) -> bool {
-                self.$prop
-            }
-        )*
-    };
 }
 
 impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
@@ -93,8 +57,6 @@ impl<T: ToSql + Sync + Send + 'static> TypedColumn<T> {
             rs_type: PhantomData::<T>,
         }
     }
-
-    impl_prop_typed_col!(nullable, unique, primary_key, generated);
 
     /// Returns a [`Where`] clause which checks whether
     /// this column is equal to some value.
@@ -219,24 +181,7 @@ impl Column {
         Column {
             column_name,
             table_name,
-            nullable: false,
-            unique: false,
-            primary_key: false,
-            generated: false,
         }
-    }
-
-    impl_prop_col!(unique, nullable, primary_key, generated);
-
-    /// Get the column name.
-    pub const fn column_name(&self) -> &'static str {
-        self.column_name
-    }
-
-    /// Get the name of the table this column
-    /// is part of.
-    pub const fn table_name(&self) -> &'static str {
-        self.table_name
     }
 
     /// Get the full name of the column.

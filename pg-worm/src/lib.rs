@@ -325,8 +325,6 @@ pub mod migration;
 pub mod pool;
 pub mod query;
 
-use std::ops::Deref;
-
 use pg::types::ToSql;
 use pg::Row;
 use pool::{fetch_client, Client};
@@ -396,24 +394,10 @@ pub trait FromRow: TryFrom<Row, Error = Error> {}
 ///
 /// It provides the ORM functionality.
 ///
-#[async_trait]
 pub trait Model<T>: FromRow {
-    /// This is a library function needed to derive the `Model`trait.
-    ///
-    /// *_DO NOT USE_*
-    #[doc(hidden)]
-    #[must_use]
-    fn _table_creation_sql() -> &'static str;
-
     /// Returns a table object used to created migrations.
     #[doc(hidden)]
     fn table() -> migration::Table;
-
-    /// Returns a slice of all columns this model's table has.
-    fn columns() -> &'static [&'static dyn Deref<Target = Column>];
-
-    /// Returns the name of this model's table's name.
-    fn table_name() -> &'static str;
 
     /// Start building a `SELECT` query which will be parsed to this model.
     fn select<'a>() -> Select<'a, Vec<T>>;
@@ -436,7 +420,7 @@ pub trait Model<T>: FromRow {
     /// arguments.
     ///
     /// You can reference the params by using `?` as a placeholder.
-    fn query(_: impl Into<String>, _: Vec<&(dyn ToSql + Sync)>) -> Query<'_, Vec<T>>;
+    fn query<'a>(_: impl Into<String>, _: Vec<&'a (dyn ToSql + Sync)>) -> Query<'a, Vec<T>>;
 }
 
 /// A cleaner api for [`migration::migrate_tables`].
@@ -453,120 +437,5 @@ pub trait Model<T>: FromRow {
 macro_rules! migrate_tables {
     ($($x:ty), +) => {
         $crate::migration::migrate_tables(vec![$(<$x as $crate::Model<$x>>::table()),*])
-    };
-}
-
-/// Create a table for your model.
-///
-/// Use the [`try_create_table!`] macro for a more convenient api.
-///
-/// # Usage
-/// ```ignore
-/// #[derive(Model)]
-/// struct Foo {
-///     #[column(primary_key)]
-///     id: i64
-/// }
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), pg_worm::Error> {
-///     // ---- snip connection setup ----
-///     pg_worm::try_create_table::<M>().await?;
-/// }
-/// ```
-#[doc(hidden)]
-pub async fn try_create_table<M: Model<M>>() -> Result<(), Error>
-where
-    Error: From<<M as TryFrom<Row>>::Error>,
-{
-    let client = fetch_client().await?;
-    client.batch_execute(M::_table_creation_sql()).await?;
-
-    Ok(())
-}
-
-/// Same as [`try_create_table`] but if a table with the same name
-/// already exists, it is dropped instead of returning an error.
-#[doc(hidden)]
-pub async fn force_create_table<M: Model<M>>() -> Result<(), Error>
-where
-    Error: From<<M as TryFrom<Row>>::Error>,
-{
-    let client = fetch_client().await?;
-    let query = format!(
-        "DROP TABLE IF EXISTS {} CASCADE; ",
-        M::columns()[0].table_name()
-    ) + M::_table_creation_sql();
-
-    client.batch_execute(&query).await?;
-
-    Ok(())
-}
-
-/// Creates a table for the specified [`Model`].
-///
-/// This is just a more convenient api
-/// for the [`try_create_table()`] function.
-///
-/// Returns an error if:
-///  - a table with the same name already exists,
-///  - the client is not connected,
-///  - the creation of the table fails.
-///
-/// # Usage
-///
-/// ```ignore
-/// use pg_worm::prelude::*;
-///
-/// #[derive(Model)]
-/// struct Foo {
-///     id: i64
-/// }
-///
-/// #[derive(Model)]
-/// struct Bar {
-///     baz: String
-/// }
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), pg_worm::Error> {
-///     // ---- snip connection setup ----
-///     try_create_table!(Foo, Bar)?;
-/// }
-/// ```
-#[macro_export]
-macro_rules! try_create_table {
-    ($($x:ty),+) => {
-        $crate::futures::future::try_join_all(
-            vec![
-                $(
-                    $crate::futures::future::FutureExt::boxed(
-                        $crate::try_create_table::<$x>()
-                    )
-                ),*
-            ]
-        )
-    };
-}
-
-/// Like [`try_create_table!`] but if a table with the same name already
-/// exists, it is dropped instead of returning an error.
-///
-/// # Example
-/// ```ignore
-/// force_create_table(MyModel, AnotherModel).await?;
-/// ```
-#[macro_export]
-macro_rules! force_create_table {
-    ($($x:ty),+) => {
-        $crate::futures_util::future::try_join_all(
-            vec![
-                $(
-                    $crate::futures_util::future::FutureExt::boxed(
-                        $crate::force_create_table::<$x>()
-                    )
-                ),*
-            ]
-        )
     };
 }
