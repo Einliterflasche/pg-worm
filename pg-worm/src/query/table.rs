@@ -32,7 +32,8 @@ use crate::query::Where;
 ///
 #[derive(Clone, Copy, Debug)]
 pub struct TypedColumn<T: ToSql + Sync> {
-    column: Column,
+    /// Inner column constant which holds names, etc. but no type
+    pub column: Column,
     rs_type: PhantomData<T>,
 }
 

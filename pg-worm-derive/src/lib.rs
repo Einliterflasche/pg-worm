@@ -168,7 +168,7 @@ impl Model {
                 #[automatically_derived]
                 const columns: [::pg_worm::query::Column; #num_fields] = [
                     #(
-                        *#ident::#field_idents
+                        #ident::#field_idents.column
                     ),*
                 ];
             }
@@ -194,8 +194,8 @@ impl Model {
                     ::pg_worm::query::Select::new(&#ident::columns, #table_name)
                 }
 
-                fn update<'a>() -> ::pg_worm::query::Update<'a> {
-                    ::pg_worm::query::Update::new(#table_name)
+                fn update<'a>() -> ::pg_worm::query::Update<'a, ::pg_worm::query::NoneSet> {
+                    ::pg_worm::query::Update::<::pg_worm::query::NoneSet>::new(#table_name)
                 }
 
 

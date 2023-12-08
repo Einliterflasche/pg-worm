@@ -6,15 +6,37 @@
 
 ### *P*ost*g*reSQL's *W*orst *ORM*
 `pg-worm` is a straightforward, fully typed, async ORM and Query Builder for PostgreSQL.
-Well, at least that's the goal. 
 
-## Roadmap
+How easy? This is all it takes to create a `Model`:
 
- - [x] Concise, intutitive syntax for `Insert`, `Select`, `Update` and `Delete` queries
- - [x] Raw queries
- - [x] Transactions
- - [ ] Auto migrations not just for table creations
- - [ ] Make pool accessable to user
+```rust
+// --- Cargo.toml ---
+# ...
+[dependencies]
+pg-worm = "0.?"
+```
+
+```rust
+// --- main.rs ---
+use pg_worm::Model;
+
+#[derive(Model)]
+struct User {
+    id: i64,
+    name: String
+    age: i64,
+}
+```
+
+That's it. Need a function to get a user's age by id?
+
+```rust
+async fn age_by_id(id: i64) -> Result<Option<i64>, pg_worm::Error> {
+    User::select_one()
+        .where_(User::id.eq(id))
+        .await
+}
+```
 
 ## Usage
 This library is based on [`tokio_postgres`](https://docs.rs/tokio-postgres/0.7.8/tokio_postgres/index.html) and is intended to be used with [`tokio`](https://tokio.rs/).
