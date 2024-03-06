@@ -1,13 +1,22 @@
 //! This module contains the logic needed to create automatic migrations.
+use std::fmt::Display;
 
-#![allow(dead_code)]
-
-use std::{fmt::Display, ops::Deref};
-
-use hashbrown::HashMap;
+use thiserror::Error;
 use tokio_postgres::Row;
 
-use crate::{pool::fetch_client, FromRow};
+use crate::pool::Client;
+
+#[derive(Debug, Error)]
+pub enum MigrationError {
+    /// When data is missing but shouldn't be or of a
+    /// different type than expected.
+    #[error("error parsing query output")]
+    ParsingError(tokio_postgres::Error),
+    /// When data is there and of the correct type but
+    /// has an unexpected value.
+    #[error("unknown and unexpected value")]
+    UnexpectedValue(String),
+}
 
 /// Represents a collection of tables.
 #[derive(Debug, Clone)]
@@ -21,7 +30,7 @@ pub struct Schema {
 pub struct Table {
     name: String,
     columns: Vec<Column>,
-    constraints: Vec<TableConstraint>,
+    constraints: Vec<Constraint>,
 }
 
 /// Represents a column.
@@ -29,150 +38,49 @@ pub struct Table {
 pub struct Column {
     name: String,
     data_type: String,
-    constraints: Vec<ColumnConstraint>,
+    not_null: bool,
 }
 
-/// Constraints which may be placed on a table.
-#[derive(Debug, Clone)]
-enum TableConstraint {
-    PrimaryKey(Vec<String>),
-    ForeignKey(String, Vec<(String, String)>),
-    ForeignKeyNamed(String, String, Vec<(String, String)>),
-    Unique(Vec<String>),
-    UniqueNamed(String, Vec<String>),
-    RawCheck(String),
-    RawCheckNamed(String, String),
+/// Represents a constraint on a table such as `UNIQUE`, `PRIMARY KEY`,
+/// `FOREIGN KEY` or `CHECK`.
+#[derive(Debug, Clone, Hash)]
+pub struct Constraint {
+    constraint_name: String,
+    table_name: String,
+    constraint_type: ConstraintType,
 }
 
-/// Constraints which may be placed on a column.
-#[derive(Debug, Clone)]
-enum ColumnConstraint {
-    Unique,
-    UniqueNamed(String),
-    NotNull,
-    PrimaryKey,
-    ForeignKey(String, String),
-    ForeignKeyNamed(String, String, String),
-    RawCheck(String),
-    RawCheckNamed(String, String),
-}
-
-/// Fetch a schema from a database connection.
+/// The different types a constraint can be of plus their respective variables.
 ///
-/// May fail due to connection errors, parsing errors or
-/// when querying for a not existing schema.
-async fn fetch_schema(
-    schema_name: impl Into<String>,
-    client: &tokio_postgres::Client,
-) -> Result<Schema, crate::Error> {
-    let schema_name = schema_name.into();
-
-    struct Entry {
-        table: String,
-        column: String,
-        data_type: String,
-    }
-
-    impl TryFrom<Row> for Entry {
-        type Error = crate::Error;
-
-        fn try_from(row: Row) -> Result<Self, Self::Error> {
-            Ok(Entry {
-                table: row
-                    .try_get("table")
-                    .map_err(|_| crate::Error::ParseError("Entry", "table"))?,
-                column: row.try_get("column")?,
-                data_type: row.try_get("data_type")?,
-            })
-        }
-    }
-
-    impl FromRow for Entry {}
-
-    // Query all columns and their data type of all tables in this schema
-    let res = client
-        .query(
-            r#"
-            SELECT
-                pg_attribute.attname AS column,
-                pg_catalog.format_type(pg_attribute.atttypid, pg_attribute.atttypmod) AS data_type,
-                pg_class.relname AS table
-            FROM
-                pg_catalog.pg_attribute
-            INNER JOIN
-                pg_catalog.pg_class ON pg_class.oid = pg_attribute.attrelid
-            INNER JOIN
-                pg_catalog.pg_namespace ON pg_namespace.oid = pg_class.relnamespace
-            WHERE
-                pg_attribute.attnum > 0
-                AND NOT pg_attribute.attisdropped
-                AND pg_namespace.nspname = $1
-                AND pg_class.relkind = 'r'
-            ORDER BY
-                attnum ASC
-        "#,
-            &[&schema_name],
-        )
-        .await?;
-
-    // Parse the query result to `Entry` objects.
-    let entries: Vec<Entry> = res
-        .into_iter()
-        .map(Entry::try_from)
-        .collect::<Result<Vec<_>, crate::Error>>()?;
-
-    // Group the columns by table. No idea if there's a better way to do this
-    let mut map: HashMap<String, Vec<Entry>> = HashMap::new();
-    for i in entries {
-        if let Some(columns) = map.get_mut(&i.table) {
-            columns.push(i);
-        } else {
-            map.insert(i.table.clone(), vec![i]);
-        }
-    }
-
-    let tables = map.into_iter().map(|(table, columns)| {
-        Table::new(table).columns(
-            columns
-                .into_iter()
-                .map(|i| Column::new(i.column, i.data_type)),
-        )
-    });
-
-    let schema = Schema::new(schema_name).tables(tables);
-
-    Ok(schema)
-}
-
-/// Try to automatically migrate from `old` to `new`.
-pub async fn try_migration_from(
-    old: &Schema,
-    new: &Schema,
-    client: &tokio_postgres::Client,
-) -> Result<(), crate::Error> {
-    let stmts = old.migrate_from(new)._join("; ");
-
-    client
-        .simple_query(&stmts)
-        .await
-        .map(|_| ())
-        .map_err(crate::Error::PostgresError)
-}
-
-/// Try to fetch the current schema and then automatically
-/// migrate from that to `new`.
-pub async fn try_migration_to(
-    new: &Schema,
-    client: &tokio_postgres::Client,
-) -> Result<(), crate::Error> {
-    let old = fetch_schema(&new.name, client).await?;
-    try_migration_from(&old, new, client).await
-}
-
-/// Automatically create new or alter existing tables in the `'public'` schema.
-pub async fn migrate_tables(table: impl IntoIterator<Item = Table>) -> Result<(), crate::Error> {
-    let new = Schema::default().tables(&mut table.into_iter());
-    try_migration_to(&new, fetch_client().await?.deref()).await
+/// Implements `PartialOrd` so that `PRIMARY KEY`s and `UNIQUE` constraints
+/// are added first in order to make the `FOREIGN KEY`s possable.
+#[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
+pub enum ConstraintType {
+    /// A primary key over one or more columns.
+    PrimaryKey {
+        /// The columns this primary key is made of.
+        columns: Vec<String>,
+    },
+    /// A uniqueness constraint over one or more columns.
+    Unique {
+        /// The columns that have to make a unique combination
+        columns: Vec<String>,
+    },
+    /// A foreign key over one or more columns.
+    /// `columns` and `foreign_columns` must be the same length.
+    ForeignKey {
+        /// The columns of this table which are mapped to foreign columns.
+        columns: Vec<String>,
+        /// The name of the foreign table.
+        foreign_table: String,
+        /// The foreign columns.
+        foreign_columns: Vec<String>,
+    },
+    /// An arbitrary check constraint.
+    Check {
+        /// The definition of the constraint
+        definition: String,
+    },
 }
 
 impl Default for Schema {
@@ -207,39 +115,16 @@ impl Schema {
         self
     }
 
-    /// Generate SQL statements which migrate `old` to this schema.
-    fn migrate_from(&self, old: &Schema) -> Vec<String> {
-        let mut statements = Vec::new();
-        for table in &self.tables {
-            if let Some(old_table) = old.tables.iter().find(|i| i.name == table.name) {
-                statements.append(&mut table.migrate_without_constraints(old_table));
-            } else {
-                statements.push(table.up());
-            }
-        }
-
-        // Add all constraints only after creating the tables to make sure
-        // the referenced columns exist.
-        let mut tmp = self
-            .tables
-            .iter()
-            .flat_map(|i| i.add_constraints())
-            .collect::<Vec<String>>();
-
-        statements.append(&mut tmp);
-
-        statements
-    }
+    /// Fetch a specific schema
+    pub async fn fetch(client: Client, schema_name: &str) -> Result<Option<Schema>, crate::Error> {}
 }
 
 impl Table {
     /// Create a new table.
     pub fn new(name: impl Into<String>) -> Self {
-        let columns: Vec<Column> = Vec::new();
-
         Table {
             name: name.into(),
-            columns,
+            columns: Vec::new(),
             constraints: Vec::new(),
         }
     }
@@ -251,336 +136,68 @@ impl Table {
         self
     }
 
-    /// Add columns to this table.
-    pub fn columns(mut self, columns: impl IntoIterator<Item = Column>) -> Self {
-        self.columns.extend(&mut columns.into_iter());
+    /// Add a constraint to this table.
+    pub fn constraint(mut self, constraint: Constraint) -> Self {
+        self.constraints.push(constraint);
 
         self
-    }
-
-    /// Add a unique constraint to column(s) of this table.
-    pub fn unique(mut self, cols: impl IntoIterator<Item = String>) -> Self {
-        self.constraints
-            .push(TableConstraint::Unique(cols.into_iter().collect()));
-
-        self
-    }
-
-    /// Add a named unique constraint to column(s) of this table.
-    pub fn unique_named(
-        mut self,
-        name: impl Into<String>,
-        cols: impl IntoIterator<Item = String>,
-    ) -> Self {
-        self.constraints.push(TableConstraint::UniqueNamed(
-            name.into(),
-            cols.into_iter().collect(),
-        ));
-
-        self
-    }
-
-    /// Add a primary key to this table.
-    pub fn primary_key(mut self, cols: impl IntoIterator<Item = String>) -> Self {
-        self.constraints
-            .push(TableConstraint::PrimaryKey(cols.into_iter().collect()));
-
-        self
-    }
-
-    /// Add a foreign key constraint to this table.
-    pub fn foreign_key(
-        mut self,
-        table: impl Into<String>,
-        columns: impl IntoIterator<Item = (String, String)>,
-    ) -> Self {
-        self.constraints.push(TableConstraint::ForeignKey(
-            table.into(),
-            columns.into_iter().collect(),
-        ));
-
-        self
-    }
-
-    fn up(&self) -> String {
-        let mut up = format!(
-            "CREATE TABLE {} ({})",
-            self.name,
-            self.columns.iter().map(|i| i.up())._join(", ")
-        );
-
-        if !self.constraints.is_empty() {
-            up.push_str(&format!(
-                ", {}",
-                self.constraints.iter().map(|i| i.up())._join(", ")
-            ));
-        }
-
-        up
-    }
-
-    fn down(&self) -> String {
-        format!("DROP TABLE IF EXISTS {}", self.name)
-    }
-
-    fn migrate_without_constraints(&self, old_table: &Table) -> Vec<String> {
-        let mut statements = Vec::new();
-
-        // If there are any constraints on the old table, drop them
-        statements.push(self.drop_all_constraints_cascading());
-
-        for new_column in &self.columns {
-            if let Some(old_column) = old_table.columns.iter().find(|i| i.name == new_column.name) {
-                // If a column of the same name already exists, change it.
-
-                let mut stmts = new_column
-                    .migrate_without_constraints(old_column)
-                    .iter()
-                    .map(|i| format!("ALTER TABLE {} {}", self.name, i))
-                    .collect::<Vec<String>>();
-                statements.append(&mut stmts);
-            } else {
-                // Else, create a new column
-                statements.push(format!("ALTER TABLE {} {}", self.name, new_column.up()));
-            }
-        }
-
-        for i in old_table
-            .columns
-            .iter()
-            .filter(|i| !self.columns.iter().any(|j| i.name == j.name))
-        {
-            statements.push(format!("ALTER TABLE {} {}", self.name, i.down()));
-        }
-
-        statements
-    }
-
-    fn add_constraints(&self) -> Vec<String> {
-        let mut statements = Vec::new();
-
-        for i in &self.columns {
-            let mut stmts = i
-                .add_constraints()
-                .iter()
-                .map(|i| format!("ALTER TABLE {} {}", self.name, i))
-                .collect::<Vec<String>>();
-
-            statements.append(&mut stmts);
-        }
-
-        for i in &self.constraints {
-            statements.push(format!("ALTER TABLE {} {}", self.name, i.migrate_to()));
-        }
-
-        statements
-    }
-
-    fn drop_all_constraints_cascading(&self) -> String {
-        // This is a pl/pgsql code block which first queries for all
-        // constraints on a given table and then removes them.
-        format!(
-            r#"DO $$
-                DECLARE i RECORD;
-                BEGIN
-                    FOR i IN (SELECT conname
-                        FROM pg_catalog.pg_constraint con
-                        INNER JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
-                        INNER JOIN pg_catalog.pg_namespace nsp ON nsp.oid = connamespace
-                        WHERE rel.relname = '{0}') LOOP
-                    EXECUTE format('ALTER TABLE {0} DROP CONSTRAINT %I CASCADE', i.conname);
-                END LOOP;
-            END $$"#,
-            self.name
-        )
     }
 }
 
 impl Column {
     /// Create a new column.
-    pub fn new(name: impl Into<String>, data_type: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, data_type: impl Into<String>, not_null: bool) -> Self {
         Column {
             name: name.into(),
             data_type: data_type.into(),
-            constraints: Vec::new(),
+            not_null,
         }
     }
 
-    /// Make this column `NOT NULL`.
-    pub fn not_null(mut self) -> Self {
-        self.constraints.push(ColumnConstraint::NotNull);
+    /// Generates the expression used to create this column.
+    ///
+    /// Of the form `{name} {data_type} {not_null?}`
+    fn add_column_expression(&self) -> String {
+        let mut expr = format!("{} {}", self.name, self.data_type);
 
-        self
-    }
-
-    /// Add a `UNIQUE` constraint to this column.
-    pub fn unique(mut self) -> Self {
-        self.constraints.push(ColumnConstraint::Unique);
-
-        self
-    }
-
-    /// Add a named `UNIQUE` constraint to this column.
-    pub fn unique_named(mut self, name: String) -> Self {
-        self.constraints.push(ColumnConstraint::UniqueNamed(name));
-
-        self
-    }
-
-    /// Make this column the `PRIMARY KEY`.
-    pub fn primary_key(mut self) -> Self {
-        self.constraints.push(ColumnConstraint::PrimaryKey);
-
-        self
-    }
-
-    /// Add a `FOREIGN KEY` constraint to this column.
-    pub fn foreign_key(mut self, table_name: String, column_name: String) -> Self {
-        self.constraints
-            .push(ColumnConstraint::ForeignKey(table_name, column_name));
-
-        self
-    }
-
-    /// Add a raw `CHECK` to this column.
-    pub fn check(mut self, check: impl Into<String>) -> Self {
-        self.constraints
-            .push(ColumnConstraint::RawCheck(check.into()));
-
-        self
-    }
-
-    /// Add a named raw `CHECK` to this column.
-    pub fn check_named(mut self, name: impl Into<String>, check: impl Into<String>) -> Self {
-        self.constraints
-            .push(ColumnConstraint::RawCheckNamed(name.into(), check.into()));
-
-        self
-    }
-
-    fn up(&self) -> String {
-        format!("{} {}", self.name, self.data_type)
-    }
-
-    fn down(&self) -> String {
-        format!("DROP COLUMN IF EXISTS {}", self.name)
-    }
-
-    fn migrate_without_constraints(&self, other: &Column) -> Vec<String> {
-        let mut statements = Vec::new();
-
-        if self.data_type != other.data_type {
-            statements.push(format!(
-                "ALTER COLUMN {} TYPE {}",
-                self.name, self.data_type
-            ));
+        if self.not_null {
+            expr.push_str(" NOT NULL");
         }
 
-        statements
-    }
-
-    fn add_constraints(&self) -> Vec<String> {
-        self.constraints
-            .iter()
-            .map(|i| i.migrate_to(self))
-            .collect()
+        expr
     }
 }
 
-impl TableConstraint {
-    fn up(&self) -> String {
-        use TableConstraint as C;
+impl Constraint {
+    /// Returns part of the statement to
+    fn add_statement(&self) -> String {
+        let mut expr = format!("CONSTRAINT {} ", self.constraint_name);
 
-        match self {
-            C::PrimaryKey(cols) => format!("PRIMARY KEY ({})", cols._join(", ")),
-            C::ForeignKey(table, cols) => format!(
-                "FOREIGN KEY ({}) REFERENCES {table} ({})",
-                cols.iter().map(|i| &i.0)._join(", "),
-                cols.iter().map(|i| &i.1)._join(", ")
-            ),
-            C::ForeignKeyNamed(name, table, cols) => format!(
-                "CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {table} ({})",
-                cols.iter().map(|i| &i.0)._join(", "),
-                cols.iter().map(|i| &i.1)._join(", ")
-            ),
-            C::Unique(cols) => format!("UNIQUE ({})", cols.join(", ")),
-            C::UniqueNamed(name, cols) => format!("CONSTRAINT {name} UNIQUE ({})", cols.join(", ")),
-            C::RawCheck(check) => format!("CHECK ({check})"),
-            C::RawCheckNamed(name, check) => format!("CONSTRAINT {name} CHECK ({check})"),
-        }
-    }
+        use ConstraintType as T;
 
-    fn migrate_to(&self) -> String {
-        use TableConstraint as T;
+        expr.push_str(&match &self.constraint_type {
+            T::Check { definition } => format!("CHECK {definition}"),
+            T::Unique { columns } => format!("UNIQUE ({})", columns.join(", ")),
+            T::PrimaryKey { columns } => format!("PRIMARY KEY ({})", columns.join(", ")),
+            T::ForeignKey {
+                columns,
+                foreign_table,
+                foreign_columns,
+            } => format!(
+                "FOREIGN KEY ({}) REFERENCES {foreign_table} ({})",
+                columns.join(", "),
+                foreign_columns.join(", ")
+            ),
+        });
 
-        match self {
-            T::PrimaryKey(columns) => {
-                format!("ADD CONSTRAINT PRIMARY KEY ({})", columns.join(", "))
-            }
-            T::Unique(columns) => format!("ADD UNIQUE ({})", columns.join(", ")),
-            T::UniqueNamed(name, columns) => {
-                format!("ADD CONSTRAINT {name} UNIQUE ({})", columns.join(", "))
-            }
-            T::ForeignKey(table, columns) => format!(
-                "ADD FOREIGN KEY ({}) REFERENCES {table} ({})",
-                columns.iter().map(|i| &i.0)._join(", "),
-                columns.iter().map(|i| &i.1)._join(", ")
-            ),
-            T::ForeignKeyNamed(name, table, columns) => format!(
-                "ADD CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {table} ({})",
-                columns.iter().map(|i| &i.0)._join(", "),
-                columns.iter().map(|i| &i.1)._join(", ")
-            ),
-            T::RawCheck(check) => format!("ADD CHECK ({check})"),
-            T::RawCheckNamed(name, check) => format!("ADD CONSTRAINT {name} CHECK ({check})"),
-        }
+        expr
     }
 }
 
-impl ColumnConstraint {
-    fn up(&self) -> String {
-        use ColumnConstraint as C;
-
-        match self {
-            C::NotNull => "NOT NULL".to_string(),
-            C::PrimaryKey => "PRIMARY KEY".to_string(),
-            C::ForeignKey(table, col) => format!("REFERENCES {table} ({col})"),
-            C::ForeignKeyNamed(name, table, col) => {
-                format!("CONSTRAINT {name} REFERENCES {table} ({col}")
-            }
-            C::Unique => "UNIQUE".to_string(),
-            C::UniqueNamed(name) => format!("CONSTRAINT {name} UNIQUE"),
-            C::RawCheck(check) => format!("CHECK ({check})"),
-            C::RawCheckNamed(name, check) => format!("CONSTRAINT {name} CHECK ({check})"),
-        }
-    }
-
-    fn migrate_to(&self, column: &Column) -> String {
-        use ColumnConstraint as C;
-
-        match self {
-            C::NotNull => format!("ALTER COLUMN {} SET NOT NULL", column.name),
-            C::PrimaryKey => format!("ADD CONSTRAINT PRIMARY KEY ({})", column.name),
-            C::Unique => format!("ALTER COLUMN {} SET UNIQUE", column.name),
-            C::UniqueNamed(name) => format!("ADD CONSTRAINT {name} UNIQUE ({})", column.name),
-            C::ForeignKey(table, other_column) => format!(
-                "ADD FOREIGN KEY ({}) REFERENCES {table} ({other_column})",
-                column.name
-            ),
-            C::ForeignKeyNamed(name, table, other_column) => format!(
-                "ADD CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {table} ({other_column})",
-                column.name
-            ),
-            C::RawCheck(check) => format!("ADD CHECK ({check})"),
-            C::RawCheckNamed(name, check) => format!("ADD CONSTRAINT {name} CHECK ({check})"),
-        }
-    }
-}
-
-/// Convenience method to avoid writing `.iter().map(|i| i.to_string()).collect::<Vec<String>>().join()`
+/// Convenience method to avoid writing `iter().map(|i| i.to_string()).collect::<Vec<String>>().join()`
 /// all the time.
 trait Join {
-    fn _join(self, _: &str) -> String;
+    fn my_join(self, _: impl AsRef<str>) -> String;
 }
 
 impl<T, U> Join for T
@@ -588,20 +205,233 @@ where
     T: IntoIterator<Item = U>,
     U: Display,
 {
-    fn _join(self, sep: &str) -> String {
+    fn my_join(self, sep: impl AsRef<str>) -> String {
         (*self
             .into_iter()
             .map(|i| i.to_string())
             .collect::<Vec<String>>())
-        .join(sep)
+        .join(sep.as_ref())
+    }
+}
+
+/// A module which groups functions for generating sql statements.
+mod sql {
+    use crate::migration::Join;
+
+    use super::{Column, Constraint, Table};
+
+    pub fn set_column_type(table: &str, column: &str, ty: &str) -> String {
+        format!("ALTER TABLE {table} ALTER COLUMN {column} TYPE {ty}")
+    }
+
+    pub fn add_constraint(table: &str, constraint: Constraint) -> String {
+        format!("ALTER TABLE {table} ADD {}", constraint.add_statement())
+    }
+
+    pub fn drop_constraint(table: &str, constraint_name: &str) -> String {
+        format!("ALTER TABLE {table} DROP CONSTRAINT {constraint_name}")
+    }
+
+    pub fn change_column_not_null(table: &str, column: &str, not_null: bool) -> String {
+        let action = if not_null { "SET" } else { "DROP" };
+        format!("ALTER TABLE {table} ALTER COLUMN {column} {action} NOT NULL")
+    }
+
+    pub fn add_column(table: &str, column: Column) -> String {
+        format!(
+            "ALTER TABLE {table} ADD COLUMN {}",
+            column.add_column_expression()
+        )
+    }
+
+    pub fn drop_column(table: &str, column: &str) -> String {
+        format!("ALTER TABLE {table} DROP COLUMN {column}")
+    }
+
+    pub fn add_table(table: Table) -> String {
+        format!(
+            "CREATE TABLE {} ({})",
+            table.name,
+            table
+                .columns
+                .iter()
+                .map(Column::add_column_expression)
+                .my_join(", ")
+        )
+    }
+
+    pub fn drop_table(table: &str) -> String {
+        format!("DROP TABLE {table}")
+    }
+
+    pub fn query_schema_exists(schema: &str) -> String {
+        format!(
+            "
+            SELECT EXISTS(
+                SELECT 
+                    1 
+                FROM 
+                    information_schema.schemata 
+                WHERE schema_name = '{schema}'
+            )"
+        )
+    }
+
+    /// Query all tables and their columns of a schema.
+    ///
+    /// Returns the columns `table_name`, `column_name`, `data_type`, `is_nullable`.
+    pub fn query_tables_and_columns(schema: &str) -> String {
+        format!(
+            "
+            SELECT 
+                table_name, 
+                column_name, 
+                data_type, 
+                is_nullable
+            FROM 
+                information_schema.columns
+            WHERE 
+                table_schema = '{schema}'
+            ORDER BY 
+                table_name, 
+                column_name"
+        )
+    }
+
+    /// Query all tables and their constraints.
+    ///
+    /// Returns the columns `table_name`, `constraint_name`, `constraint_type`,
+    /// `definition` (for `CHECK` constriants), `columns`
+    /// (which is a list of all covered columns)
+    /// and `ref_table` and `ref_columns` for `FOREIGN KEY` target columns.
+    pub fn query_tables_and_constraints(schema: &str) -> String {
+        format!(
+            "
+            SELECT
+                tc.table_name,
+                tc.constraint_name,
+                tc.constraint_type,
+                cc.check_clause AS definition,
+                ARRAY_AGG(kcu.column_name ORDER BY kcu.ordinal_position) AS columns,
+                fk.ref_table_name,
+                fk.ref_columns
+            FROM
+                information_schema.table_constraints tc
+            LEFT JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+            LEFT JOIN information_schema.check_constraints cc ON tc.constraint_name = cc.constraint_name AND tc.table_schema = cc.constraint_schema
+            LEFT JOIN (
+            SELECT
+                kcu.table_name,
+                kcu.constraint_name,
+                kcu.table_schema,
+                ARRAY_AGG(kcu.column_name ORDER BY kcu.position_in_unique_constraint) AS ref_columns,
+                    rc.unique_constraint_name,
+                    kcu2.table_name AS ref_table_name
+                FROM
+                    information_schema.referential_constraints rc
+                JOIN information_schema.key_column_usage kcu ON rc.constraint_name = kcu.constraint_name AND rc.constraint_schema = kcu.table_schema
+                JOIN information_schema.key_column_usage kcu2 ON rc.unique_constraint_name = kcu2.constraint_name AND rc.unique_constraint_schema = kcu2.table_schema
+                GROUP BY
+                    kcu.table_name,
+                    kcu.constraint_name,
+                    kcu.table_schema,
+                    rc.unique_constraint_name,
+                    kcu2.table_name
+            ) fk ON tc.constraint_name = fk.constraint_name AND tc.table_schema = fk.table_schema
+            WHERE
+                tc.table_schema = '{schema}'
+            GROUP BY
+                tc.table_name, tc.constraint_name, tc.constraint_type, cc.check_clause, fk.ref_table_name, fk.ref_columns
+            ORDER BY
+                tc.table_name, tc.constraint_type"
+        )
+    }
+}
+
+impl TryFrom<&Row> for Constraint {
+    type Error = MigrationError;
+
+    fn try_from(row: &Row) -> Result<Self, Self::Error> {
+        let table_name: String = row
+            .try_get("table_name")
+            .map_err(MigrationError::ParsingError)?;
+
+        let constraint_name: String = row
+            .try_get("constraint_name")
+            .map_err(MigrationError::ParsingError)?;
+
+        let constraint_type_raw: String = row
+            .try_get("constraint_type")
+            .map_err(MigrationError::ParsingError)?;
+
+        let constraint_type = match constraint_type_raw.as_str() {
+            "PRIMARY KEY" => ConstraintType::PrimaryKey {
+                columns: row
+                    .try_get("columns")
+                    .map_err(MigrationError::ParsingError)?,
+            },
+            "UNIQUE" => ConstraintType::Unique {
+                columns: row
+                    .try_get("columns")
+                    .map_err(MigrationError::ParsingError)?,
+            },
+            "FOREIGN KEY" => ConstraintType::ForeignKey {
+                columns: row
+                    .try_get("columns")
+                    .map_err(MigrationError::ParsingError)?,
+                foreign_table: row
+                    .try_get("ref_table")
+                    .map_err(MigrationError::ParsingError)?,
+                foreign_columns: row
+                    .try_get("ref_columns")
+                    .map_err(MigrationError::ParsingError)?,
+            },
+            "CHECK" => ConstraintType::Check {
+                definition: row
+                    .try_get("definition")
+                    .map_err(MigrationError::ParsingError)?,
+            },
+            unknown => return Err(MigrationError::UnexpectedValue(unknown.to_string())),
+        };
+
+        Ok(Constraint {
+            constraint_name,
+            table_name,
+            constraint_type,
+        })
+    }
+}
+
+impl TryFrom<&Row> for Column {
+    type Error = MigrationError;
+
+    fn try_from(row: &Row) -> Result<Self, Self::Error> {
+        let column_name: String = row
+            .try_get("column_name")
+            .map_err(MigrationError::ParsingError)?;
+        let data_type: String = row
+            .try_get("data_type")
+            .map_err(MigrationError::ParsingError)?;
+        let is_nullable_raw: String = row
+            .try_get("is_nullable")
+            .map_err(MigrationError::ParsingError)?;
+        let is_nullable = match is_nullable_raw.as_str() {
+            "YES" => true,
+            "NO" => false,
+            unknown => return Err(MigrationError::UnexpectedValue(unknown.to_string())),
+        };
+
+        Ok(Column {
+            name: column_name,
+            data_type,
+            not_null: !is_nullable,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::pool::{fetch_client, Connection};
-
-    use super::{fetch_schema, try_migration_from, Column, Schema, Table};
+    use crate::pool::Connection;
 
     #[tokio::test]
     async fn migrate() -> Result<(), Box<dyn std::error::Error>> {
@@ -609,17 +439,6 @@ mod tests {
             .connect()
             .await
             .unwrap();
-        let src = fetch_schema("public", &&fetch_client().await.unwrap())
-            .await
-            .unwrap();
-        let dest = Schema::default().table(
-            Table::new("book")
-                .column(Column::new("id", "BIGINT").primary_key().not_null())
-                .column(Column::new("title", "TEXT").unique().not_null()),
-        );
-
-        try_migration_from(&src, &dest, &&fetch_client().await?).await?;
-
         Ok(())
     }
 }

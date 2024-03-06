@@ -7,7 +7,7 @@ struct Bar {
 }
 
 impl Bar {
-    async fn foo() {
-        Bar::query("", vec![]).await;
+    async fn foo() -> Result<(), pg_worm::Error> {
+        Bar::query("", vec![]).await.map(|_| ())
     }
 }

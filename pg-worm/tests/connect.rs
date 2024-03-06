@@ -5,7 +5,7 @@ use pg_worm::{pool::Connection, query::Transaction};
 
 #[derive(Model)]
 struct Book {
-    #[column(primary_key, auto)]
+    #[column(primary_key, auto_increment)]
     id: i64,
     title: String,
     author_id: i64,
@@ -13,7 +13,7 @@ struct Book {
 
 #[derive(Model)]
 struct Author {
-    #[column(primary_key, auto)]
+    #[column(primary_key, auto_increment)]
     id: i64,
     name: String,
 }

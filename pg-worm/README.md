@@ -326,6 +326,19 @@ Option | Meaning | Usage | Default
 `unique` | Add the `UNIQUE` constraint to this column | `#[column(unique)]` | `false`
 
 
+## `derive` errors
+
+Altough we try to provide nice error messages with highlighted code this is not always possible. 
+The following is a list of requirements for the `derive(Model)` macro to execute flawlessly:
+
+- It must be used on a `struct` with at least one named field.
+  Enums, unions and unit/tuple structs aren't supported. 
+  This should be caught with a nice error message.
+- Every field's type must implement `ToSql` from [`postgres-types`](https://docs.rs/postgres-types/latest/postgres_types/). 
+  If you use a type which does _not_ implement `ToSql`, an error `E0277: the trait bound Foo: ToSql is not satisfied`.
+  If this the type in question is yours you can fix this by [deriving `FromSql` and `ToSql`](https://docs.rs/postgres-types/latest/postgres_types/).
+  If it's one for which `pg-worm` provides support via feature flags, check that you have enabled the respective flag.
+  
 ## MSRV
 The minimum supported rust version is `1.70` as this crate uses the recently introduced `OnceLock` from the standard library.
 
