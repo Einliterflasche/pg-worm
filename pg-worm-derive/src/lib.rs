@@ -16,20 +16,11 @@ pub fn derive(input: OldTokenStream) -> OldTokenStream {
 
     let mut out = TokenStream::new();
 
-    // Throw an error if generics are used
-    if !parsed.generics.params.is_empty() {
-        out.extend(
-            Error::new_spanned(
-                parsed.generics,
-                "pg-worm: cannot derive `Model` for struct with generic parameters",
-            )
-            .to_compile_error(),
-        );
-    }
-
+    // Output all generated errors
     out.extend(model.errs.iter().map(Error::to_compile_error));
-    out.extend(model.impl_from_row());
 
+    // Output the generated code
+    out.extend(model.impl_from_row());
     out.extend(model.impl_column_consts());
     out.extend(model.impl_columns_array());
     out.extend(model.impl_model());
@@ -54,6 +45,7 @@ struct Field {
     column_name: String,
     ty: syn::Type,
     primary_key: bool,
+    auto_increment: bool,
 }
 
 impl Model {
@@ -61,6 +53,7 @@ impl Model {
         let mut errs: Vec<Error> = Vec::new();
         let mut fields: Vec<syn::Field> = Vec::new();
 
+        // Make sure we're dealing with a struct with named fields.
         match input.data.clone() {
             Data::Enum(_) | Data::Union(_) => errs.push(Error::new_spanned(
                 &input,
@@ -77,6 +70,7 @@ impl Model {
 
         let mut parsed_fields = Vec::new();
 
+        // Make sure the struct has fields.
         if fields.is_empty() {
             errs.push(Error::new_spanned(
                 &input,
@@ -84,9 +78,27 @@ impl Model {
             ));
         }
 
+        // Make sure no generics are used.
+        if !input.generics.params.is_empty() {
+            errs.push(Error::new_spanned(
+                &input.generics.params,
+                "pg-worm: `Model` cannot be derived for generic types",
+            ));
+        }
+
+        // Parse each field and capture all errors.
         for skeleton_field in fields.into_iter().map(Field::try_parse) {
             errs.extend(skeleton_field.errs);
             parsed_fields.push(skeleton_field.val);
+        }
+
+        // Make sure there's only one primary key.
+        // TODO: allow composite primary keys, but that will be part of the `table` attribute.
+        if parsed_fields.iter().filter(|i| i.primary_key).count() > 1 {
+            errs.extend(Error::new_spanned(
+                &input.ident,
+                "pg-worm: `Model` can't have more than one primary key field.",
+            ));
         }
 
         let model = Model {
@@ -100,6 +112,8 @@ impl Model {
     }
 
     fn impl_column_consts(&self) -> TokenStream {
+        // Fallback to avoid unnecessary errors.
+        // An error message is emitted anyway when parsing the field.
         if self.fields.is_empty() {
             return quote!();
         }
@@ -123,6 +137,8 @@ impl Model {
         let column_names = self.fields.iter().map(|i| &i.column_name);
         let ident = self.ident.clone();
 
+        // Fallback to avoid unnecessary errors.
+        // An error message is emited anyway when parsing the field.
         if self.fields.is_empty() {
             return quote!(
                 #[automatically_derived]
@@ -163,10 +179,14 @@ impl Model {
         let field_idents = self.fields.iter().map(|i| &i.ident);
         let num_fields = self.fields.len();
 
+        // This one needs no fallback since it's simply an empty array
+        // if the struct has no fields.
+
         quote!(
             impl #ident {
                 #[automatically_derived]
-                const columns: [::pg_worm::query::Column; #num_fields] = [
+                #[allow(non_upper_case_globals)]
+                const COLUMNS: [::pg_worm::query::Column; #num_fields] = [
                     #(
                         #ident::#field_idents.column
                     ),*
@@ -179,6 +199,8 @@ impl Model {
         let ident = &self.ident;
         let table_name = &self.table_name;
 
+        // This one doesn't need a fallback either since none of this code depends
+        // directly on valid input.
         quote!(
             #[automatically_derived]
             impl ::pg_worm::Model<#ident> for #ident {
@@ -187,11 +209,11 @@ impl Model {
                 }
 
                 fn select<'a>() -> ::pg_worm::query::Select<'a, Vec<#ident>> {
-                    ::pg_worm::query::Select::new(&#ident::columns, #table_name)
+                    ::pg_worm::query::Select::new(&#ident::COLUMNS, #table_name)
                 }
 
                 fn select_one<'a>() -> ::pg_worm::query::Select<'a, Option<#ident>> {
-                    ::pg_worm::query::Select::new(&#ident::columns, #table_name)
+                    ::pg_worm::query::Select::new(&#ident::COLUMNS, #table_name)
                 }
 
                 fn update<'a>() -> ::pg_worm::query::Update<'a, ::pg_worm::query::NoneSet> {
@@ -231,6 +253,8 @@ impl Field {
 
         let mut primary_key = false;
 
+        let mut auto_increment = false;
+
         if let Some(attr) = attr {
             if let Ok(nested) =
                 attr.parse_args_with(Punctuated::<Meta, syn::Token![,]>::parse_terminated)
@@ -253,6 +277,9 @@ impl Field {
                                 "pg-worm: option `name` must be string literal",
                             )),
                         },
+                        Meta::Path(path) if path.is_ident("auto_increment") => {
+                            auto_increment = true;
+                        }
                         _ => errs.push(Error::new_spanned(meta, "pg-worm: unknown macro option")),
                     }
                 }
@@ -267,6 +294,7 @@ impl Field {
             column_name,
             ty: value.ty,
             primary_key,
+            auto_increment,
         };
 
         Skeleton::new(field, errs)
@@ -280,6 +308,7 @@ impl Field {
 
         quote!(
             #[automatically_derived]
+            #[allow(non_upper_case_globals)]
             const #ident: ::pg_worm::query::TypedColumn<#ty> = ::pg_worm::query::TypedColumn::new(
                 #table_name,
                 #column_name

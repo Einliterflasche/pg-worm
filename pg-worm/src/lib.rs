@@ -325,6 +325,7 @@ pub mod migration;
 pub mod pool;
 pub mod query;
 
+use migration::MigrationError;
 use pg::types::ToSql;
 use pg::Row;
 use pool::{fetch_client, Client};
@@ -376,6 +377,9 @@ pub enum Error {
     /// the corresponding model.
     #[error("couldn't parse row into {0}: couldn't read field {1}")]
     ParseError(&'static str, &'static str),
+    /// Emitted during migrations.
+    #[error("an error occured while performing a migration")]
+    MigrationError(MigrationError),
     /// Errors emitted by the Postgres server.
     ///
     /// Most likely an invalid query.

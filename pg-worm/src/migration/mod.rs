@@ -1,6 +1,7 @@
 //! This module contains the logic needed to create automatic migrations.
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
+use hashbrown::HashMap;
 use thiserror::Error;
 use tokio_postgres::Row;
 
@@ -115,8 +116,25 @@ impl Schema {
         self
     }
 
-    /// Fetch a specific schema
-    pub async fn fetch(client: Client, schema_name: &str) -> Result<Option<Schema>, crate::Error> {}
+    /// Fetch a specific schema, if it exists.
+    pub async fn fetch(client: Client, schema_name: &str) -> Result<Option<Schema>, crate::Error> {
+        let schema_exists = client
+            .query(&sql::query_schema_exists(schema_name), &[])
+            .await
+            .map_err(crate::Error::PostgresError)?;
+        if schema_exists.len() < 1
+            || schema_exists[0]
+                .try_get("exists")
+                .map_err(|e| crate::Error::MigrationError(MigrationError::ParsingError(e)))?
+        {
+            return Ok(None);
+        }
+
+        let tables_and_columns = client
+            .query(&sql::query_tables_and_columns(schema_name), &[])
+            .await
+            .map_err(crate::Error::PostgresError)?;
+    }
 }
 
 impl Table {
